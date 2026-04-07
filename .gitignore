@@ -1,0 +1,21 @@
+# Datasets and huge files
+datasets/
+data/
+*.tar.gz
+*.incomplete
+*.zip
+
+# Logs
+*.log
+
+# Environments
+.env
+.venv
+venv/
+__pycache__/
+*.pyc
+
+# IDEs and OS
+.cursor/
+.vscode/
+.DS_Store

@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+python-multipart
+minio
+confluent-kafka
+python-dotenv

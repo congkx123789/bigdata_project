@@ -1,0 +1,8 @@
+pyspark==3.4.1
+delta-spark==2.4.0
+confluent-kafka
+paddlepaddle-gpu
+paddleocr
+unstructured[local-inference]
+python-dotenv
+minio
