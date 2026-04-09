@@ -19,3 +19,8 @@ __pycache__/
 .cursor/
 .vscode/
 .DS_Store
+
+# Temporary files
+pid.txt
+*.pid
+node_modules/

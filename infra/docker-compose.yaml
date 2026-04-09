@@ -15,7 +15,7 @@ services:
       - minio_data:/data
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 30s
       timeout: 20s
       retries: 3
@@ -35,7 +35,7 @@ services:
   milvus:
     image: milvusdb/milvus:v2.3.15
     container_name: milvus-standalone
-    command: ["milvus", "run", "standalone"]
+    command: [ "milvus", "run", "standalone" ]
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
@@ -61,7 +61,7 @@ services:
       POSTGRES_PASSWORD: password123
       POSTGRES_DB: document_db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -102,18 +102,31 @@ services:
     image: quay.io/keycloak/keycloak:24.0
     container_name: keycloak
     environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: password123
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: password123
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/document_db
       KC_DB_USERNAME: admin
       KC_DB_PASSWORD: password123
-      KC_HOSTNAME: localhost
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY: "edge"
+      KC_HOSTNAME_DEBUG: "true"
     ports:
-      - "8080:8080"
+      - "8081:8080"
     depends_on:
       - postgres
     command: start-dev
+
+  # Local LLM Server (Ollama)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
 
 volumes:
   minio_data:
@@ -121,3 +134,4 @@ volumes:
   milvus_data:
   postgres_data:
   redis_data:
+  ollama_data:

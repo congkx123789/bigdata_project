@@ -1,11 +1,11 @@
 import os
 import logging
-from pymilvus import connections, FieldSchema, CollectionSchema, DataType, Collection
+from pymilvus import connections, FieldSchema, CollectionSchema, DataType, Collection, utility
 from sentence_transformers import SentenceTransformer
-from langchain.llms import Ollama
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema.runnable import RunnablePassthrough
-from langchain.schema.output_parser import StrOutputParser
+from langchain_community.llms import Ollama
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -29,7 +29,7 @@ model = SentenceTransformer(EMBEDDING_MODEL)
 connections.connect("default", host=MILVUS_HOST, port=MILVUS_PORT)
 
 # Create Collection if not exists
-if not Collection.exists(COLLECTION_NAME):
+if not utility.has_collection(COLLECTION_NAME):
     fields = [
         FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
         FieldSchema(name="filename", dtype=DataType.VARCHAR, max_length=255),
@@ -47,12 +47,16 @@ if not Collection.exists(COLLECTION_NAME):
     }
     collection.create_index("vector", index_params)
     logger.info(f"Created collection: {COLLECTION_NAME}")
+    collection.load()
+    logger.info(f"Loaded collection: {COLLECTION_NAME}")
 else:
     collection = Collection(COLLECTION_NAME)
     collection.load()
+    logger.info(f"Loaded existing collection: {COLLECTION_NAME}")
 
-# 3. LangChain with Local Llama-3 (via Ollama)
-llm = Ollama(model="llama3")
+# 3. LangChain with Local LLM (via Ollama)
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
+llm = Ollama(model=OLLAMA_MODEL)
 
 def get_context(query, k=5):
     """

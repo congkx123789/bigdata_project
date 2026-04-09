@@ -1,5 +1,0 @@
-streamlit
-requests
-minio
-pandas
-python-dotenv

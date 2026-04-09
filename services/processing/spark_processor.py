@@ -8,6 +8,12 @@ from paddleocr import PaddleOCR
 from unstructured.partition.auto import partition
 from minio import Minio
 import io
+import paddle.inference
+
+# Fix compatibility issue in PaddlePaddle 2.6+ for PaddleOCR
+if not hasattr(paddle.inference.Config, 'set_optimization_level'):
+    paddle.inference.Config.set_optimization_level = lambda self, level: None
+
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO)
@@ -24,7 +30,7 @@ KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "document-uploaded")
 
 # Initialize PaddleOCR (Use GPU if RTX 5060 Ti is available)
-ocr = PaddleOCR(use_angle_cls=True, lang='vi', use_gpu=True)
+ocr = PaddleOCR(use_textline_orientation=True, lang='vi')
 
 # MinIO Client for downloading files in UDF
 minio_client = Minio(
