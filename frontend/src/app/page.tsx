@@ -4,13 +4,7 @@ import * as React from "react";
 import { Sidebar } from "@/components/sidebar";
 import { ChatArea } from "@/components/chat-area";
 import { ChatInput } from "@/components/chat-input";
-import { DocumentViewer } from "@/components/document-viewer";
 import { api } from "@/lib/api";
-import {
-  Panel,
-  Group as PanelGroup,
-  Separator as PanelResizeHandle,
-} from "react-resizable-panels";
 import { cn } from "@/lib/utils";
 
 interface Message {
@@ -96,46 +90,22 @@ export default function Home() {
     setIsGenerating(false);
   };
 
-  const handleQuote = (text: string) => {
-    setForwardedInput(text);
-  };
-
-  const handleQuickSend = (text: string) => {
-    handleSend(`Phân tích đoạn văn bản này giúp tôi: \n\n> ${text}`, []);
-  };
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-screen bg-background overflow-hidden font-sans">
       <Sidebar />
 
-      <main className="flex-1 flex flex-col relative min-w-0">
-        <PanelGroup orientation="horizontal" className="h-full">
-          {/* Left: Document Viewer */}
-          <Panel defaultSize={55} minSize={30}>
-            <DocumentViewer
-              onQuote={handleQuote}
-              onSend={handleQuickSend}
-            />
-          </Panel>
+      <main className="flex-1 flex flex-col min-w-0">
+        <ChatArea messages={messages} />
 
-          <PanelResizeHandle className="bg-zinc-200 dark:bg-zinc-800 w-1.5 hover:bg-blue-500/50 transition-colors cursor-col-resize" />
-
-          {/* Right: Chat Interface */}
-          <Panel defaultSize={45} minSize={25}>
-            <div className="flex flex-col h-full relative border-l border-zinc-200 dark:border-zinc-800">
-              <ChatArea messages={messages} />
-
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background to-transparent pt-10">
-                <ChatInput
-                  onSend={handleSend}
-                  onStop={handleStop}
-                  isGenerating={isGenerating}
-                  forwardedInput={forwardedInput}
-                />
-              </div>
-            </div>
-          </Panel>
-        </PanelGroup>
+        <div className="bg-background border-t border-zinc-200 dark:border-zinc-800 py-4">
+          <ChatInput
+            onSend={handleSend}
+            onStop={handleStop}
+            isGenerating={isGenerating}
+            forwardedInput={forwardedInput}
+          />
+        </div>
       </main>
     </div>
   );

@@ -66,7 +66,6 @@ export function ChatArea({ messages }: ChatAreaProps) {
                     </div>
                 )}
 
-                <div className="h-40" /> {/* Spacer for bottom input */}
             </div>
         </ScrollArea>
     );

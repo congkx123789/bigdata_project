@@ -1,6 +1,6 @@
 "use client";
 
-const CORE_API_BASE_URL = "http://localhost:8001/api";
+const CORE_API_BASE_URL = "/api";
 
 export interface ChatHistoryGroup {
     label: string;
