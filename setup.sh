@@ -46,6 +46,14 @@ pip install -r services/processing/requirements.txt
 pip install -r services/rag/requirements.txt
 pip install -r frontend/requirements.txt
 
+# 5. Option: Download Raw Datasets
+read -p "Do you want to download raw datasets (e.g. RVL-CDIP 48GB)? (y/N) " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    chmod +x download_datasets.sh
+    ./download_datasets.sh
+fi
+
 echo "Setup complete! Please ensure local Docker daemon is running."
 echo "To start services locally:"
 echo "- Ingestion: python services/ingestion/main.py"
