@@ -25,6 +25,9 @@ class InferenceRequest(BaseModel):
     doc_id: str | None = None
     session_id: str = "default"
     history: list[HistoryMessage] = Field(default_factory=list)
+    provider: Literal["local", "google"] = "local"
+    google_api_key: str | None = None
+    retrieve_only: bool = False
 
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
@@ -108,6 +111,54 @@ def startup_event() -> None:
         logger.warning(f"Startup retrieval init failed, will retry on first request: {exc}")
 
 
+async def get_ollama_response(prompt: str) -> str:
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": False,
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data.get("response", "Không có câu trả lời từ AI.")
+
+
+async def get_gemini_response(prompt: str, api_key: str) -> str:
+    # Google AI Studio (Gemini) REST API
+    # Gemini 2.0 Flash is recommended for speed and availability
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+    
+    payload = {
+        "contents": [
+            {
+                "parts": [{"text": prompt}]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.7,
+            "topK": 40,
+            "topP": 0.95,
+            "maxOutputTokens": 2048,
+        }
+    }
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(url, json=payload)
+        if response.status_code != 200:
+            error_data = response.json()
+            error_msg = error_data.get("error", {}).get("message", "Unknown Gemini error")
+            raise Exception(f"Gemini API Error: {error_msg}")
+        
+        data = response.json()
+        try:
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError):
+            return "Lỗi phân giải phản hồi từ Gemini."
+
+
 @app.post("/internal/inference")
 async def run_inference(req: InferenceRequest):
     try:
@@ -127,46 +178,48 @@ async def run_inference(req: InferenceRequest):
             "used_context": "",
         }
 
+    if req.retrieve_only:
+        num_sources = len(sources)
+        return {
+            "answer": f"Discovery Mode: Tìm thấy {num_sources} đoạn trích liên quan từ tài liệu của bạn.",
+            "sources": sources,
+            "used_context": context[:3000],
+        }
+
+    # Tạm thời vô hiệu hóa lịch sử theo yêu cầu người dùng để tránh lỗi hiển thị.
     history_text = ""
-    if req.history:
-        last_turns = req.history[-12:]
-        history_lines = [f"{m.role.upper()}: {m.content}" for m in last_turns]
-        history_text = "\n".join(history_lines)
 
     prompt = (
         "Bạn là trợ lý AI cho kho tài liệu. "
-        "Giữ ngữ cảnh xuyên suốt theo lịch sử hội thoại. "
-        "Nếu câu hỏi hiện tại tham chiếu câu trước (ví dụ: 'còn gì nữa', 'nói kỹ hơn', 'ý trên'), "
-        "hãy dùng HISTORY để suy luận đúng chủ đề đang nói. "
-        "Chỉ trả lời dựa trên CONTEXT đã cho; nếu thiếu dữ liệu thì nói rõ là không đủ thông tin từ tài liệu.\n\n"
-        f"HISTORY:\n{history_text or '[No history]'}\n\n"
+        "Chỉ trả lời dựa trên CONTEXT đã cho. "
+        "Nếu thiếu dữ liệu trong CONTEXT thì nói rõ là không đủ thông tin từ tài liệu.\n\n"
         f"CONTEXT:\n{context}\n\n"
-        f"CURRENT_QUESTION: {req.query}\n\n"
+        f"QUESTION: {req.query}\n\n"
         "ANSWER (in Vietnamese):"
     )
 
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{OLLAMA_URL}/api/generate",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "stream": False,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
+        if req.provider == "google":
+            if not req.google_api_key:
+                return {
+                    "answer": "[Error] Gemini API Key is missing. Please provide it in settings.",
+                    "sources": sources,
+                    "used_context": context[:3000],
+                }
+            answer = await get_gemini_response(prompt, req.google_api_key)
+        else:
+            answer = await get_ollama_response(prompt)
+            
     except Exception as exc:
-        logger.exception("Ollama inference failed")
+        logger.exception(f"{req.provider} inference failed")
         return {
-            "answer": f"[Error] LLM inference failed: {exc}",
+            "answer": f"[Error] {req.provider} LLM inference failed: {exc}",
             "sources": sources,
             "used_context": context[:3000],
         }
 
     return {
-        "answer": data.get("response", "Không có câu trả lời từ AI."),
+        "answer": answer,
         "sources": sources,
         "used_context": context[:3000],
     }
@@ -174,5 +227,4 @@ async def run_inference(req: InferenceRequest):
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8002)

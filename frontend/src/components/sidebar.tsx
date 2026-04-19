@@ -1,21 +1,29 @@
 "use client";
 
 import * as React from "react";
-import { Plus, History, User, LogOut, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
+import { 
+    Plus, 
+    History, 
+    User, 
+    LogOut, 
+    ChevronLeft, 
+    ChevronRight, 
+    MessageSquare, 
+    Settings as SettingsIcon 
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Separator } from "@/components/ui/separator";
 import { motion, AnimatePresence } from "framer-motion";
 import { api, ChatHistoryGroup } from "@/lib/api";
 
-
 interface SidebarProps {
     className?: string;
+    onOpenSettings?: () => void;
 }
 
-export function Sidebar({ className }: SidebarProps) {
+export function Sidebar({ className, onOpenSettings }: SidebarProps) {
     const [isCollapsed, setIsCollapsed] = React.useState(false);
 
     // Real data from API
@@ -109,7 +117,7 @@ export function Sidebar({ className }: SidebarProps) {
                 )}
             </ScrollArea>
 
-            {/* Footer - User Profile */}
+            {/* Footer - User Profile & Settings */}
             <div className="p-4 border-t bg-zinc-50/50 dark:bg-zinc-950/50 backdrop-blur-sm">
                 <div className={cn(
                     "flex items-center gap-3",
@@ -127,12 +135,21 @@ export function Sidebar({ className }: SidebarProps) {
                         </div>
                     )}
 
-                    <Button variant="ghost" size="icon" className={cn(
-                        "h-8 w-8 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100",
-                        isCollapsed ? "mt-2" : "ml-auto"
-                    )}>
-                        <LogOut className="h-4 w-4" />
-                    </Button>
+                    <div className={cn("flex items-center", isCollapsed ? "flex-col gap-2" : "ml-auto gap-1")}>
+                        <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={onOpenSettings}
+                            className="h-8 w-8 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                            title="Settings"
+                        >
+                            <SettingsIcon className="h-4 w-4" />
+                        </Button>
+
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100" title="Logout">
+                            <LogOut className="h-4 w-4" />
+                        </Button>
+                    </div>
                 </div>
             </div>
 

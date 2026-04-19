@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Paperclip, Send, Square, X, FileText, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Paperclip, Send, Square, X, FileText, Image as ImageIcon, Loader2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface ChatInputProps {
-    onSend: (message: string, files: File[]) => void;
+    onSend: (message: string, files: File[], retrieveOnly?: boolean) => void;
     onStop: () => void;
     isGenerating: boolean;
     forwardedInput?: string;
@@ -20,6 +20,7 @@ export function ChatInput({ onSend, onStop, isGenerating, forwardedInput }: Chat
     const [files, setFiles] = React.useState<File[]>([]);
     const [isUploading, setIsUploading] = React.useState(false);
     const [uploadProgress, setUploadProgress] = React.useState(0);
+    const [isRetrieveOnly, setIsRetrieveOnly] = React.useState(false);
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
     // Sync forwarded input
@@ -32,7 +33,7 @@ export function ChatInput({ onSend, onStop, isGenerating, forwardedInput }: Chat
 
     const handleSend = () => {
         if ((input.trim() || files.length > 0) && !isGenerating) {
-            onSend(input, files);
+            onSend(input, files, isRetrieveOnly);
             setInput("");
             setFiles([]);
         }
@@ -136,6 +137,21 @@ export function ChatInput({ onSend, onStop, isGenerating, forwardedInput }: Chat
                                 <Paperclip className="h-5 w-5" />
                             </Button>
                         </label>
+                    </div>
+
+                    <div className="flex-shrink-0 mb-1">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setIsRetrieveOnly(!isRetrieveOnly)}
+                            className={cn(
+                                "h-9 w-9 rounded-full transition-colors",
+                                isRetrieveOnly ? "text-blue-500 bg-blue-50 dark:bg-blue-900/20" : "text-zinc-500"
+                            )}
+                            title={isRetrieveOnly ? "Chế độ tìm trích dẫn (BGE Only)" : "Chế độ Chat (Full RAG)"}
+                        >
+                            <Search className="h-5 w-5" />
+                        </Button>
                     </div>
 
                     <textarea

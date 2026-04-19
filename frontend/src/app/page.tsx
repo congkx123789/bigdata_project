@@ -15,12 +15,43 @@ interface Message {
   isStreaming?: boolean;
 }
 
+import { AppSettings, SettingsDialog } from "@/components/settings-dialog";
+
 export default function Home() {
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [forwardedInput, setForwardedInput] = React.useState<string | undefined>(undefined);
+  
+  // Model Settings
+  const [settings, setSettings] = React.useState<AppSettings>({
+    provider: "local",
+    googleApiKey: "",
+  });
+  const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
 
-  const handleSend = async (content: string, files: File[]) => {
+  // Load settings from localStorage on mount
+  React.useEffect(() => {
+    const saved = localStorage.getItem("nexus-ai-settings");
+    if (saved) {
+      try {
+        const parsed: AppSettings = JSON.parse(saved);
+        // Ưu tiên chọn Google nếu có Key để giảm tải GPU local theo yêu cầu
+        if (parsed.googleApiKey && parsed.googleApiKey.trim() !== "") {
+          parsed.provider = "google";
+        }
+        setSettings(parsed);
+      } catch (e) {
+        console.error("Failed to parse settings", e);
+      }
+    }
+  }, []);
+
+  const handleSaveSettings = (newSettings: AppSettings) => {
+    setSettings(newSettings);
+    localStorage.setItem("nexus-ai-settings", JSON.stringify(newSettings));
+  };
+
+  const handleSend = async (content: string, files: File[], retrieveOnly: boolean = false) => {
     setForwardedInput(undefined); // Reset forwarded input when sent
 
     if (files.length > 0) {
@@ -55,7 +86,13 @@ export default function Home() {
     ]);
 
     try {
-      const response = await api.sendMessage(content);
+      const response = await api.sendMessage(
+        content,
+        "default",
+        settings.provider,
+        settings.provider === "google" ? settings.googleApiKey : undefined,
+        retrieveOnly
+      );
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantId
@@ -93,7 +130,7 @@ export default function Home() {
 
   return (
     <div className="flex h-screen bg-background overflow-hidden font-sans">
-      <Sidebar />
+      <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
 
       <main className="flex-1 flex flex-col min-w-0">
         <ChatArea messages={messages} />
@@ -107,6 +144,13 @@ export default function Home() {
           />
         </div>
       </main>
+
+      <SettingsDialog
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onSave={handleSaveSettings}
+        initialSettings={settings}
+      />
     </div>
   );
 }

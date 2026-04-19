@@ -23,6 +23,9 @@ SESSION_MESSAGES: dict[str, deque[dict[str, str]]] = defaultdict(
 class ChatMessage(BaseModel):
     message: str
     session_id: str = "default"
+    provider: str = "local"
+    api_key: str | None = None
+    retrieve_only: bool = False
 
 @router.get("/history")
 async def get_history(session_id: str = "default"):
@@ -39,27 +42,30 @@ async def send_message(msg: ChatMessage):
     """
     Chat flow có memory theo session_id:
     1. Lấy lịch sử hội thoại gần nhất.
-    2. Gọi AI Engine với query + history.
+    2. Gọi AI Engine với query + history + provider settings.
     3. Lưu user/assistant vào memory.
     """
     session_history = SESSION_MESSAGES[msg.session_id]
     history_payload = list(session_history)
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=150.0) as client:
             response = await client.post(
                 f"{AI_ENGINE_URL}/internal/inference",
                 json={
                     "query": msg.message,
                     "session_id": msg.session_id,
                     "history": history_payload,
+                    "provider": msg.provider,
+                    "google_api_key": msg.api_key,
+                    "retrieve_only": msg.retrieve_only,
                 },
             )
             response.raise_for_status()
             ai_response = response.json()
-    except httpx.ConnectError:
+    except Exception as exc:
         ai_response = {
-            "answer": "[Fallback] AI Engine is offline. Please check the service.",
+            "answer": f"[Error] AI Engine communication failed: {exc}",
             "sources": [],
         }
 

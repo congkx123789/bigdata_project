@@ -26,11 +26,23 @@ export const api = {
         }
     },
 
-    async sendMessage(message: string, sessionId: string = "default"): Promise<ChatResponse> {
+    async sendMessage(
+        message: string,
+        sessionId: string = "default",
+        provider: string = "local",
+        apiKey?: string,
+        retrieveOnly: boolean = false
+    ): Promise<ChatResponse> {
         const resp = await fetch(`${CORE_API_BASE_URL}/chats/send`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message, session_id: sessionId }),
+            body: JSON.stringify({
+                message,
+                session_id: sessionId,
+                provider,
+                api_key: apiKey,
+                retrieve_only: retrieveOnly
+            }),
         });
         if (!resp.ok) throw new Error("Failed to send message");
         return await resp.json();
