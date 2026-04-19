@@ -9,11 +9,15 @@ data/
 *.log
 
 # Environments
-.env
+.env*
+!.env.example
 .venv
 venv/
 __pycache__/
 *.pyc
+
+# Snapshots
+hf_snapshots/
 
 # IDEs and OS
 .cursor/

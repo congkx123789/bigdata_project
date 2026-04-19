@@ -78,6 +78,33 @@ Quan trọng: Cần có `GOOGLE_API_KEY` để sử dụng Gemini.
 
 ---
 
+## 🌍 Triển khai đa máy (Portable Deployment)
+
+Hệ thống được thiết kế để có thể dễ dàng thiết lập trên một máy tính mới bằng cách đồng bộ mã nguồn qua GitHub và dữ liệu qua Hugging Face.
+
+### 1. Đồng bộ dữ liệu lên Hugging Face (Trên máy gốc)
+Nếu bạn có thay đổi về dữ liệu hoặc vector indexed, hãy chạy script sau để upload snapshot lên Hugging Face:
+```bash
+export HF_TOKEN="your_huggingface_token_here"
+python3 sync_to_hf.py
+```
+*Dữ liệu sẽ được đẩy lên repository: [Cong123779/bigdata-assets](https://huggingface.co/datasets/Cong123779/bigdata-assets)*
+
+### 2. Thiết lập trên máy mới
+1. Clone mã nguồn từ GitHub:
+   ```bash
+   git clone https://github.com/congkx123789/bigdata_project.git
+   cd bigdata_project
+   ```
+2. Cài đặt biến môi trường và chạy script setup:
+   ```bash
+   export HF_TOKEN="your_huggingface_token_here"
+   ./setup.sh
+   ```
+3. Khi được hỏi: `Do you want to restore data from Hugging Face?`, chọn `y`. Hệ thống sẽ tự động tải các bản sao lưu từ Hugging Face và khôi phục vào các Docker Volume tương ứng.
+
+---
+
 ## 📂 Cấu trúc dự án
 
 - `frontend/`: Ứng dụng Web Next.js.

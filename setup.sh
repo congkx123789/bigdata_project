@@ -23,15 +23,23 @@ else
   exit 1
 fi
 
-# 1. Start Infrastructure
+# 1. Option: Restore Data from Hugging Face
+read -p "Do you want to restore data from Hugging Face (Milvus, Postgres, etc.)? (y/N) " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "Restoring data from Hugging Face..."
+    python3 restore_from_hf.py
+fi
+
+# 2. Start Infrastructure
 echo "Starting core infrastructure (MinIO, Milvus, Postgres, Kafka)..."
 docker compose -f infra/docker-compose.yaml up -d
 
-# 2. Start Monitoring
+# 3. Start Monitoring
 echo "Starting monitoring stack (Prometheus, Grafana, ELK)..."
 docker compose -f monitoring/docker-compose-monitoring.yaml up -d
 
-# 3. Install Python Dependencies
+# 4. Install Python Dependencies
 echo "Installing Python dependencies for services..."
 pip install -r services/ingestion/requirements.txt
 pip install -r services/processing/requirements.txt
@@ -43,4 +51,4 @@ echo "To start services locally:"
 echo "- Ingestion: python services/ingestion/main.py"
 echo "- Processing: python services/processing/spark_processor.py"
 echo "- RAG: python services/rag/rag_pipeline.py"
-echo "- Frontend: streamlit run frontend/app.py"
+echo "- Frontend: cd frontend && npm run dev"
