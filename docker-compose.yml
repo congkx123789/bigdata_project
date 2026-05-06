@@ -1,0 +1,134 @@
+version: '3.8'
+
+services:
+  # --- INFRASTRUCTURE LAYER (Hạ tầng lưu trữ & Database) ---
+  
+  milvus-minio:
+    image: minio/minio:latest
+    container_name: bd_legal_minio
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123
+    volumes:
+      - milvus_minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - bigdata_internal
+    restart: unless-stopped
+
+  milvus-etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: bd_legal_etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_RETENTION=1
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir /etcd
+    volumes:
+      - milvus_etcd_data:/etcd
+    networks:
+      - bigdata_internal
+    restart: unless-stopped
+
+  milvus-standalone:
+    image: milvusdb/milvus:v2.3.15
+    container_name: bd_legal_milvus
+    command: [ "milvus", "run", "standalone" ]
+    environment:
+      ETCD_ENDPOINTS: milvus-etcd:2379
+      MINIO_ADDRESS: milvus-minio:9000
+      MINIO_ACCESS_KEY_ID: admin
+      MINIO_SECRET_ACCESS_KEY: password123
+      MINIO_USE_SSL: "false"
+      MINIO_BUCKET_NAME: aiedu-milvus
+    depends_on:
+      - milvus-etcd
+      - milvus-minio
+    volumes:
+      - milvus_vector_data:/var/lib/milvus
+    networks:
+      - bigdata_internal
+    restart: unless-stopped
+
+  # --- APPLICATION LAYER (Mã nguồn AI & API) ---
+
+  ai-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: bd_legal_ai_engine
+    command: python3 services/ai-rag-engine/main.py
+    environment:
+      - MILVUS_HOST=milvus-standalone
+      - MILVUS_PORT=19530
+      - TRANSFORMERS_OFFLINE=1
+      - OLLAMA_URL=http://heritage_ollama:11434
+      - OLLAMA_MODEL=legal-rag-finetuned
+    volumes:
+      - .:/app
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      - milvus-standalone
+    networks:
+      - bigdata_internal
+      - heritage_network
+    restart: unless-stopped
+
+  core-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: bd_legal_core_api
+    command: python3 services/core-api/main.py
+    ports:
+      - "8003:8001"
+    environment:
+      - AI_ENGINE_URL=http://ai-engine:8002
+    volumes:
+      - .:/app
+    depends_on:
+      - ai-engine
+    networks:
+      - bigdata_internal
+      - heritage_network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: bd_legal_frontend
+    ports:
+      - "8080:8080"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8003
+    networks:
+      - bigdata_internal
+      - heritage_network
+    volumes:
+      - ./frontend/src:/app/src
+    restart: unless-stopped
+
+networks:
+  bigdata_internal:
+    driver: bridge
+  heritage_network:
+    external: true
+    name: han_nom_model_default
+
+volumes:
+  milvus_minio_data:
+    external: true
+    name: infra_minio_data
+  milvus_etcd_data:
+    external: true
+    name: infra_etcd_data
+  milvus_vector_data:
+    external: true
+    name: infra_milvus_data

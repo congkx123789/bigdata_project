@@ -1,0 +1,63 @@
+# System Walkthrough - Large-Scale AI Document Processing System
+
+I have successfully implemented the "foundation to roof" roadmap for your AI system. This local platform is designed to leverage your Ryzen 9 9900X and RTX 5060 Ti to process millions of documents.
+
+## Architecture Overview
+
+The system follows a microservices architecture coordinated by Kafka and stored in MinIO/Delta Lake:
+
+```mermaid
+graph TD
+    User([User]) --> Frontend[Streamlit Dashboard]
+    Frontend --> Ingestion[FastAPI Ingestion]
+    Ingestion --> MinIO[(MinIO S3)]
+    Ingestion --> Kafka{Kafka}
+    Kafka --> Spark[PySpark Factory]
+    Spark --> OCR[PaddleOCR GPU]
+    OCR --> Delta[(Delta Lake)]
+    User --> Chat[AI Chat UI]
+    Chat --> RAG[RAG Service]
+    RAG --> Milvus[(Milvus Vector DB)]
+    RAG --> Llama[Local Llama-3]
+    RAG --> Delta
+```
+
+## Implemented Components
+
+### 1. Infrastructure Foundation
+- [docker-compose.yaml](file:///home/alida/Documents/Cursor/Bigdata/infra/docker-compose.yaml): Deploys MinIO, Milvus, Postgres, Redis, Kafka, and Keycloak.
+- [docker-compose-monitoring.yaml](file:///home/alida/Documents/Cursor/Bigdata/monitoring/docker-compose-monitoring.yaml): Deploys Prometheus, Grafana, and ELK stack.
+
+### 2. Microservices
+- [Ingestion Service](file:///home/alida/Documents/Cursor/Bigdata/services/ingestion/main.py): FastAPI handles file uploads to MinIO and emits Kafka events.
+- [Processing Factory](file:///home/alida/Documents/Cursor/Bigdata/services/processing/spark_processor.py): PySpark listens to Kafka, uses PaddleOCR (GPU-ready) for text bóc tách, and saves to Delta Lake.
+- [AI/RAG Service](file:///home/alida/Documents/Cursor/Bigdata/services/rag/rag_pipeline.py): Uses BGE-M3 embeddings, Milvus search, and LangChain with local Llama-3 (8B).
+
+### 3. User Interface
+- [Streamlit Frontend](file:///home/alida/Documents/Cursor/Bigdata/frontend/app.py): A unified dashboard for document management and a ChatGPT-style RAG interface.
+
+## How to Get Started
+
+1.  **Fix Docker Daemon**: I noticed a connection issue with your local Docker daemon. Please ensure Docker is running.
+2.  **Run Setup**:
+    ```bash
+    chmod +x setup.sh
+    ./setup.sh
+    ```
+3.  **Start Services**:
+    - **Infrastructure**: `docker compose -f infra/docker-compose.yaml up -d`
+    - **Backend**:
+        ```bash
+        python services/ingestion/main.py &
+        python services/processing/spark_processor.py &
+        python services/rag/rag_pipeline.py &
+        ```
+    - **Frontend**: `streamlit run frontend/app.py`
+
+## Next Steps: Datasets
+For testing with ~100GB of data, use the Hugging Face links mentioned in your roadmap:
+- **RVL-CDIP**: `huggingface.co/datasets/rvl_cdip` (37GB)
+- **IIT-CDIP**: `huggingface.co/datasets/pierreguillou/iit-cdip-1000-samples`
+
+> [!IMPORTANT]
+> Since you have an RTX 5060 Ti, ensure you have the NVIDIA Container Toolkit installed so the OCR service can access the GPU.

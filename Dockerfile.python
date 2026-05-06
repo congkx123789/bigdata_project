@@ -1,0 +1,41 @@
+# Dockerfile cho Bigdata Legal AI Engine & API
+FROM nvidia/cuda:12.8.0-runtime-ubuntu22.04
+
+# Cài đặt Python và các thư viện hệ thống
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    python3-dev \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy file định nghĩa thư viện (nếu có) hoặc cài trực tiếp
+# Ở đây tôi sẽ cài các thư viện cốt lõi bạn đang dùng
+RUN pip3 install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    pymilvus \
+    sentence-transformers \
+    torch \
+    openai \
+    httpx \
+    requests \
+    python-multipart \
+    pydantic \
+    pyarrow
+
+# Thiết lập biến môi trường
+ENV PYTHONPATH=/app
+ENV TRANSFORMERS_OFFLINE=1
+ENV HF_DATASETS_OFFLINE=1
+
+# Copy mã nguồn
+COPY . /app
+
+# Cổng mặc định
+EXPOSE 8001 8002
+
+# Lệnh khởi chạy sẽ được định nghĩa trong docker-compose
+CMD ["python3", "services/core-api/main.py"]

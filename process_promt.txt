@@ -1,0 +1,53 @@
+1. Lớp Lưu trữ Dữ liệu (Data Storage Layer)
+Lớp này hiện tại đã bao quát được cả dữ liệu phi cấu trúc, vector AI và dữ liệu giao dịch nghiệp vụ.
+
+MinIO: Lưu trữ Object Storage cho file gốc (PDF, hình ảnh).
+
+Delta Lake: Quản trị dữ liệu lớn nằm trên MinIO, giúp quản lý dữ liệu text sau bóc tách chuẩn ACID.
+
+Milvus: Vector DB chuyên dụng để lưu các bản nhúng (embeddings) phục vụ RAG.
+
+PostgreSQL (MỚI bổ sung): Cơ sở dữ liệu quan hệ (OLTP). Chuyên dùng để lưu thông tin tài khoản, cấu hình hệ thống, và ghi nhận trạng thái của từng file (VD: File A đang chạy OCR, File B đã hoàn thành, File C bị lỗi).
+
+2. Lớp Xử lý Dữ liệu Lớn & Điều phối (Big Data & Orchestration)
+Đảm nhiệm việc vận chuyển và tính toán với khối lượng dữ liệu khổng lồ.
+
+Apache Spark (PySpark): Engine tính toán phân tán. Spark sẽ kéo dữ liệu từ MinIO, thực hiện các phép biến đổi và ghi vào Delta Lake.
+
+Apache Kafka: Message Broker. Giữ vai trò huyết mạch giao tiếp bất đồng bộ giữa các service (nhận thông báo upload, truyền tín hiệu bóc tách).
+
+Apache Airflow: Công cụ lập lịch trình (Scheduler). Tự động kích hoạt các job Spark chạy định kỳ hoặc chạy lại (retry) các task bị lỗi.
+
+3. Lớp Bóc tách Tài liệu (Document Extraction Layer)
+Unstructured.io: Xử lý bóc tách tốc độ cao cho các file văn bản chuẩn (Word, PDF có sẵn text) để tiết kiệm tài nguyên.
+
+PaddleOCR: Xử lý các tài liệu phức tạp (ảnh scan, giấy tờ có bảng biểu). Tận dụng tối đa sức mạnh của GPU RTX 5060 Ti để nội suy hình ảnh ra text chính xác nhất.
+
+LayoutLMv3: (Tùy chọn bổ sung) Để hiểu sâu cấu trúc tài liệu phức tạp như hóa đơn, chứng từ giúp định danh chính xác đâu là ngày tháng, đâu là số tiền.
+
+4. Lớp Truy vấn AI & RAG (AI Query Layer)
+Llama-3 (8B): LLM mã nguồn mở chạy cục bộ (tối ưu cực tốt trên chip Ryzen 9 9900X), đóng vai trò tổng hợp câu trả lời từ ngữ cảnh được cung cấp.
+
+BAAI/bge-m3: Mô hình nhúng (Embedding Model) chuyển đổi tiếng Việt thành vector.
+
+LangChain: Framework "nhạc trưởng" điều phối toàn bộ quy trình RAG (tìm kiếm Milvus -> đưa ngữ cảnh cho Llama-3).
+
+5. Lớp Kiến trúc Dịch vụ & Bảo mật (SOA, Microservices & Security)
+Lớp này định hình cách hệ thống giao tiếp với bên ngoài và bảo vệ an toàn dữ liệu.
+
+FastAPI: Xây dựng các RESTful API siêu tốc (Upload, Chat, Admin).
+
+Kong / Nginx: API Gateway. Cánh cửa duy nhất nhận mọi request từ client, thực hiện định tuyến (routing) và chặn các truy cập rác (Rate limiting).
+
+Keycloak (MỚI bổ sung): Hệ thống Identity & Access Management (IAM). Đứng ngay sau API Gateway để cấp phát Token (JWT), quản lý đăng nhập và phân quyền user.
+
+Redis (MỚI bổ sung): Lớp bộ nhớ đệm siêu tốc (Caching). Đặt trước các service của FastAPI. Nếu một câu hỏi AI hoặc một truy vấn trạng thái giống hệt nhau xuất hiện, Redis sẽ trả kết quả ngay lập tức mà không cần gọi xuống DB hay chạy lại LLM.
+
+Docker & Kubernetes (K8s): Đóng gói và điều phối tự động các container, đảm bảo các service có thể nhân bản (scale) linh hoạt khi người dùng tăng đột biến.
+
+6. Lớp Giám sát & Vận hành (Monitoring & Observability - MỚI)
+"Mắt thần" của hệ thống, giúp bạn không bị "mù" khi hệ thống SOA vận hành hàng chục microservices.
+
+Prometheus & Grafana: Thu thập số liệu (Metrics). Vẽ biểu đồ trực quan xem CPU/RAM của server đang tải bao nhiêu, Kafka có bị nghẽn không, Spark job chạy mất bao lâu.
+
+ELK Stack (Elasticsearch, Logstash, Kibana): Thu thập và quản lý Log. Gom toàn bộ dòng thông báo báo lỗi từ FastAPI, Spark, PaddleOCR về một bảng điều khiển duy nhất để dễ dàng dò lỗi (debug) khi hệ thống gặp sự cố.

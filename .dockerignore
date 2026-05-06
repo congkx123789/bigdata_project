@@ -1,0 +1,9 @@
+node_modules
+.next
+datasets
+*.parquet
+*.json
+.git
+.venv
+__pycache__
+.gemini

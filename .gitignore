@@ -1,0 +1,42 @@
+# === DO NOT PUSH (Heavy Data) ===
+datasets/
+venv/
+node_modules/
+.next/
+model_weights/
+qwen*/
+lora*/
+*.gguf
+*.bin
+*.parquet
+*.meta
+*.bkp
+.minio.sys/
+milvus_data/
+aiedu-milvus/
+rdb_data/
+hf_snapshots/
+outputs/
+member/
+unsloth_compiled_cache/
+_unsloth_sentencepiece_temp/
+scratch/
+checkpoint*/
+
+# === Application State & Logs ===
+ingest_checkpoint.txt
+ingestion_checkpoint.txt
+*.log
+*.pid
+pid.txt
+*.json
+!frontend/package.json
+!frontend/package-lock.json
+
+# === Python & OS ===
+__pycache__/
+*.py[cod]
+.env
+.DS_Store
+.idea/
+.vscode/
