@@ -145,10 +145,10 @@ async def send_message_stream(msg: ChatMessage):
 
     return StreamingResponse(
         stream_generator(), 
-        media_type="text/event-stream", # Quay lại event-stream để Proxy nhận diện luồng
+        media_type="application/octet-stream", # Chuyển sang octet-stream để Proxy không nén Gzip
         headers={
             "X-Accel-Buffering": "no",
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform", # no-transform cấm Proxy thay đổi/nén dữ liệu
             "Connection": "keep-alive",
             "Content-Encoding": "identity",
             "X-Content-Type-Options": "nosniff",
