@@ -47,7 +47,7 @@ graph TD
         I -->|Agent Logic| J[agentic_rag/agent.py]
         J -->|Search| F
         F -->|Top K Context| J
-        J -->|Prompt + Context| K[Gemini 1.5 Flash]
+        J -->|Prompt + Context| K[Gemini 3 Flash]
         K -->|Trả lời| G
     end
 
@@ -101,5 +101,4 @@ Bigdata/
 - Cơ chế Anonymous User cho phép trải nghiệm hệ thống không cần đăng ký.
 
 ---
-**Developed with ❤️ by Antigravity AI Team.**
 **Optimized for NVIDIA Blackwell Architecture.**
