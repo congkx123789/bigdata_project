@@ -72,7 +72,8 @@ export const api = {
         apiKey?: string,
         googleModel: string = "gemini-3.1-flash-lite-preview"
     ): AsyncGenerator<string> {
-        const resp = await fetch(`${CORE_API_BASE_URL}/chats/send_stream`, {
+        const cacheBuster = Date.now();
+        const resp = await fetch(`${CORE_API_BASE_URL}/chats/send_stream?t=${cacheBuster}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

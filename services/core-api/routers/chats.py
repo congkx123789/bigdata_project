@@ -124,6 +124,10 @@ async def send_message_stream(msg: ChatMessage):
                     "google_model": msg.google_model,
                 }
             ) as response:
+                # Gửi dữ liệu mồi (Padding) để phá vỡ bộ đệm của Proxy/Cloudflare (ép xả dữ liệu ngay)
+                padding = ":" + " " * 1024 + "\n" 
+                yield padding
+                
                 # Gửi ngay dòng đầu tiên để kích hoạt UI
                 first_chunk = "### 🛡️ Nexus Legal AI - Tiến trình xử lý:\n"
                 yield first_chunk
@@ -143,9 +147,11 @@ async def send_message_stream(msg: ChatMessage):
         stream_generator(), 
         media_type="text/event-stream", # Quay lại event-stream để Proxy nhận diện luồng
         headers={
-            "X-Accel-Buffering": "no", # Quan trọng nhất cho Nginx
+            "X-Accel-Buffering": "no",
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "Content-Encoding": "identity",
+            "X-Content-Type-Options": "nosniff",
             "Transfer-Encoding": "chunked",
         }
     )
