@@ -45,11 +45,27 @@ services:
       - milvus-minio
     volumes:
       - milvus_vector_data:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
     networks:
       - bigdata_internal
     restart: unless-stopped
 
   # --- APPLICATION LAYER (Mã nguồn AI & API) ---
+
+  google-mock:
+    image: python:3.10-slim
+    container_name: bd_legal_mock_server
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: bash -c "pip install fastapi uvicorn && python3 mock_google_server.py"
+    ports:
+      - "9000:9000"
+    networks:
+      - bigdata_internal
+    restart: unless-stopped
 
   ai-engine:
     build:
@@ -63,6 +79,10 @@ services:
       - TRANSFORMERS_OFFLINE=1
       - OLLAMA_URL=http://heritage_ollama:11434
       - OLLAMA_MODEL=legal-rag-finetuned
+      - DEFAULT_GOOGLE_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_API_URL=${GEMINI_API_URL}
+      - GOOGLE_MODEL=gemini-2.0-flash
+      - MAX_CONCURRENT=20
     volumes:
       - .:/app
       - ~/.cache/huggingface:/root/.cache/huggingface
@@ -75,6 +95,7 @@ services:
               capabilities: [gpu]
     depends_on:
       - milvus-standalone
+      - google-mock
     networks:
       - bigdata_internal
       - heritage_network
@@ -89,7 +110,7 @@ services:
     ports:
       - "8003:8001"
     environment:
-      - AI_ENGINE_URL=http://ai-engine:8002
+      - AI_ENGINE_URL=http://bd_legal_ai_engine:8002
     volumes:
       - .:/app
     depends_on:

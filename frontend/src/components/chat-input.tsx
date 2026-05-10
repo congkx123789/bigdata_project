@@ -83,7 +83,7 @@ export function ChatInput({ onSend, onStop, isGenerating, forwardedInput }: Chat
     }, [input]);
 
     return (
-        <div className="relative max-w-4xl mx-auto w-full px-4 md:px-8 pb-8 pt-2">
+        <div className="relative max-w-4xl mx-auto w-full px-4 md:px-8 pb-4 pt-2">
             <div
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleDrop}

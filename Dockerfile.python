@@ -24,7 +24,13 @@ RUN pip3 install --no-cache-dir \
     requests \
     python-multipart \
     pydantic \
-    pyarrow
+    pyarrow \
+    google-generativeai \
+    beautifulsoup4 \
+    pandas \
+    FlagEmbedding \
+    einops \
+    accelerate
 
 # Thiết lập biến môi trường
 ENV PYTHONPATH=/app

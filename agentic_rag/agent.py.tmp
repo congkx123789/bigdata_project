@@ -57,7 +57,7 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
 
 <AGENTIC_WORKFLOW>
 - Cần tra cứu thêm: Trả về <call_search>từ khóa</call_search>
-- Đã đủ dữ liệu: Trả về <final_answer>nội dung tư vấn chuyên sâu</final_answer> sau đó mới đến Khối JSON trích dẫn. **TUYỆT ĐỐI KHÔNG ĐỂ JSON TRONG THẺ FINAL_ANSWER**.
+- Đã đủ dữ liệu: Trả về <final_answer>nội dung tư vấn chuyên sâu</final_answer> sau đó mới đến Khối JSON trích dẫn. **TUYỆT ĐỐO KHÔNG ĐỂ JSON TRONG THẺ FINAL_ANSWER**.
 </AGENTIC_WORKFLOW>
 """
         self.chat_history = [{"role": "system", "content": self.system_prompt}]
@@ -105,12 +105,6 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
 
         # 2. Làm sạch các thẻ tag agentic nếu còn sót
         clean_text = re.sub(r'<(final_answer|call_search)>|</(final_answer|call_search)>', '', clean_text)
-        # Loại bỏ triệt để các tag CITATIONS nếu bị rò rỉ vào clean_text
-        clean_text = re.sub(r'\[CITATIONS_JSON\].*?\[/CITATIONS_JSON\]', '', clean_text, flags=re.DOTALL)
-        clean_text = clean_text.replace("[CITATIONS_JSON]", "").replace("[/CITATIONS_JSON]", "")
-        
-        # Xóa triệt để các mảnh JSON rò rỉ ở cuối (Lỗi phổ biến khi Regex khớp thiếu block)
-        clean_text = re.sub(r'[\s,]*[\[\]\{\}]{2,}\s*$', '', clean_text)
 
         # 3. Regex cứu hộ nếu trích dẫn vẫn chưa tìm thấy (dạng liệt kê text)
         if not citations:
@@ -125,8 +119,7 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
 
         return {
             "summary": clean_text.strip() if len(clean_text.strip()) > 20 else "Kết quả tra cứu:",
-            "citations": citations,
-            "raw_text": text # Thêm để debug nếu cần
+            "citations": citations
         }
 
     def _get_parent_title(self, chunk_id: str) -> str:
@@ -215,85 +208,23 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
                 cid = found_res['chunk_id']
                 if cid not in seen_ids:
                     # 1. Làm sạch nội dung tại chỗ
-                    c["content"] = self._clean_text(found_res["content"])
-                    
-                    # 2. Truy vết tiêu đề chuẩn (Logic mới)
-                    raw_title = found_res.get("title", "")
-                    short_title = self._shorten_title(raw_title)
-                    
-                    if not short_title:
-                        # Nếu tiêu đề trong DB bị "nông" hoặc rác, đi tìm tiêu đề ở Parent
-                        parent_title = self._get_parent_title(cid)
-                        short_title = self._shorten_title(parent_title) or "Văn bản Pháp luật"
-                    
-                    c["root_title"] = short_title
-                    
-                    if not c.get("source") or "Căn cứ" in c["source"]:
-                        c["source"] = short_title
-                    
-                    final_citations.append(c)
-                    seen_ids.add(cid)
-            elif c.get("content") and len(c["content"]) > 50:
-                final_citations.append(c)
-
-        return final_citations
-
-    async def _call_gemini_stream(self, prompt: str, api_key: str, model_name: str):
-        """Streaming version of Gemini API call with retry logic."""
-        base_url = os.getenv("GEMINI_API_URL", "https://generativelanguage.googleapis.com").rstrip("/")
-        url = f"{base_url}/v1beta/models/{model_name}:streamGenerateContent?key={api_key}&alt=sse"
-        
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}], 
-            "generationConfig": {"temperature": 0.1},
-        }
-        
-        max_retries = 3
-        retry_delay = 2
-        
-        for attempt in range(max_retries):
-            try:
-                async with httpx.AsyncClient(timeout=120.0) as client:
-                    async with client.stream("POST", url, json=payload) as response:
-                        if response.status_code == 429:
-                            logger.warning(f"⚠️ Gemini 429 (Rate Limit) on attempt {attempt+1}. Retrying in {retry_delay}s...")
-                            await asyncio.sleep(retry_delay)
-                            retry_delay *= 2
-                            continue
-                            
-                        if response.status_code != 200:
-                            error_text = await response.aread()
-                            logger.error(f"❌ Gemini Stream Error {response.status_code}: {error_text.decode()}")
-                            yield f"Lỗi kết nối Gemini: {response.status_code}"
-                            return
-
-                        async for line in response.aiter_lines():
-                            if line.startswith("data: "):
-                                try:
-                                    import json
-                                    data = json.loads(line[6:])
-                                    chunk_text = data["candidates"][0]["content"]["parts"][0]["text"]
-                                    yield chunk_text
-                                except Exception:
-                                    continue
-                        return # Success
-            except Exception as e:
-                logger.error(f"❌ Gemini Stream Exception: {e}")
-                if attempt == max_retries - 1:
-                    yield f"Lỗi kết nối Gemini: {str(e)}"
-                await asyncio.sleep(1)
-
-    async def run_stream(self, user_query: str, api_key: str, model_name: str = "gemini-2.0-flash", history: List[Dict] = None):
-        """Quy trình Agentic với Real Streaming."""
-        print(f"DEBUG: Agent bắt đầu xử lý query: {user_query[:50]}...", flush=True)
+                    c["content"] = self.    async def run_stream(self, user_query: str, api_key: str, model_name: str = "gemini-2.0-flash", history: List[Dict] = None):
+        """
+        Quy trình Agentic Thuần túy (AI làm chủ):
+        Turn 1: Gửi query cho Gemini -> Gemini quyết định có tra cứu hay không.
+        Turn 2: Nếu có tra cứu -> Server chạy search -> Gửi kết quả lại cho Gemini -> Gemini trả lời.
+        """
         start_total = time.time()
         current_history = history if history else []
         observations = [] 
 
+        # --- BƯỚC 0: TÍN HIỆU KHỞI ĐỘNG ---
         yield "### 🛡️ Nexus Legal AI - Tiến trình xử lý:\n"
         yield "1. 🔍 **Phân tích yêu cầu**: Đang xác định phạm vi pháp lý và từ khóa tra cứu...\n"
-        
+        await asyncio.sleep(0.1)
+
         # --- BƯỚC 1: HỎI AI XEM CÓ CẦN TRA CỨU KHÔNG ---
+        logger.info(f"🤖 [TURN 1] Sending query directly to Gemini: {user_query}")
         prompt_t1 = self._build_professional_agent_prompt(user_query, current_history, observations, 1)
         resp_t1 = await self._call_gemini_raw(prompt_t1, api_key, model_name)
         
@@ -303,128 +234,38 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
             search_match = re.search(r"<call_search>(.*?)</call_search>", resp_t1, re.DOTALL)
             if search_match:
                 query_to_search = search_match.group(1).strip()
-                yield f"2. 📡 **Tra cứu dữ liệu**: Đang tìm kiếm quy định về \"{query_to_search}\"...\n"
+                logger.info(f"🔍 [ACTION] Gemini requested search for: {query_to_search}")
+                
+                yield f"2. 📡 **Tra cứu dữ liệu**: Đang truy xuất cơ sở dữ liệu luật cho từ khóa `{query_to_search}`...\n"
+                
+                # Thực hiện tra cứu thực tế
                 search_results = self.vector_store.search(query_to_search, k=6)
-                yield f"3. 📚 **Trích xuất kiến thức**: Tìm thấy {len(search_results)} căn cứ liên quan. Đang chuẩn bị dữ liệu...\n"
-                obs_content = "KẾT QUẢ TRA CỨU:\n" + "\n".join([f"- {r['content']}" for r in search_results])
+                logger.info(f"✅ Found {len(search_results)} relevant legal chunks.")
+                
+                if search_results:
+                    yield f"3. 📚 **Trích xuất căn cứ**: Đã tìm thấy {len(search_results)} đoạn văn bản luật liên quan. Đang thực hiện Reranking tối ưu...\n"
+                else:
+                    yield "3. ⚠️ **Kết quả**: Không tìm thấy dữ liệu trực tiếp. Đang mở rộng phạm vi tìm kiếm...\n"
+                
+                # Đưa kết quả vào quan sát để gửi lại cho AI
+                obs_content = "KẾT QUẢ TRA CỨU TỪ HỆ THỐNG:\n" + "\n".join([f"- {r['content']}" for r in search_results])
                 observations.append(obs_content)
+            else:
+                logger.warning("⚠️ Gemini used <call_search> but the query was empty.")
         else:
+            logger.info("💡 Gemini decided to answer directly without additional search.")
             yield "2. 💡 **Sử dụng kiến thức hệ thống**: Đã có đủ thông tin để trả lời trực tiếp.\n"
 
-        yield "4. ⚖️ **Soạn thảo văn bản**: Đang tổng hợp căn cứ và đưa ra tư vấn chuyên sâu...\n"
-        yield "---\n\n" # Dấu ngăn cách để Frontend biết bắt đầu phần trả lời chính
-
-        # --- BƯỚC 2: AI TỔNG HỢP VÀ TRẢ LỜI (STREAMING THẬT) ---
+        # --- BƯỚC 2: AI TỔNG HỢP VÀ TRẢ LỜI ---
+        yield "4. ⚖️ **Soạn thảo văn bản**: Đang tổng hợp căn cứ và đưa ra tư vấn chuyên sâu...\n\n---\n\n"
+        logger.info(f"🤖 [TURN 2] Generating final response...")
         prompt_t2 = self._build_professional_agent_prompt(user_query, current_history, observations, 2)
         
-        full_final_response = ""
-        async for chunk in self._call_gemini_stream(prompt_t2, api_key, model_name):
-            full_final_response += chunk
+        full_response = await self._call_gemini_raw(prompt_t2, api_key, model_name)
+        
+        # Simulating streaming
+        for i in range(0, len(full_response), 20):
+            chunk = full_response[i:i+20]
             yield chunk
-
-        # Sau khi stream xong văn bản, mới gửi JSON trích dẫn ẩn
-        parsed = self._parse_fallback_content(full_final_response)
-        final_citations = parsed["citations"] if parsed["citations"] else self._get_final_citations(observations)
-        
-        if final_citations:
-            import json
-            yield f"\n\n[CITATIONS_JSON]{json.dumps(final_citations, ensure_ascii=False)}[/CITATIONS_JSON]"
-        
+            await asyncio.sleep(0.005)
         logger.info(f"✨ [PROCESS DONE] Total time: {time.time() - start_total:.2f}s")
-
-    async def run(self, user_query: str, api_key: str, model_name: str = "gemini-2.0-flash", history: List[Dict] = None, **kwargs) -> Dict:
-        """Quy trình Agentic Đồng bộ (Dùng cho API cũ)."""
-        logger.info(f"🚀 Starting synchronous agent run for query: {user_query[:50]}...")
-        full_text = ""
-        try:
-            async for chunk in self.run_stream(user_query, api_key, model_name, history):
-                if isinstance(chunk, str):
-                    full_text += chunk
-            
-            logger.info(f"✅ Agent stream completed. Parsing content...")
-            parsed_result = self._parse_fallback_content(full_text)
-            return parsed_result
-        except Exception as e:
-            logger.error(f"❌ Error in Agent.run: {e}", exc_info=True)
-            return {"summary": f"Lỗi hệ thống: {str(e)}", "citations": []}
-
-    def _build_professional_agent_prompt(self, user_query, history, observations, current_turn):
-        # 1. Xây dựng chuỗi lịch sử (Có kèm trích dẫn cũ)
-        history_str = ""
-        for h in history:
-            role = "USER" if h['role'] == 'user' else "AI"
-            history_str += f"<{role}>{h['content']}</{role}>\n"
-            if h.get('metadata') and h['role'] == 'assistant':
-                history_str += f"<AI_PREVIOUS_KNOWLEDGE>{h['metadata']}</AI_PREVIOUS_KNOWLEDGE>\n"
-        
-        # 2. Xây dựng chuỗi dữ liệu tra cứu
-        obs_str = "\n".join([f"<SEARCH_TURN_{i+1}>{obs}</SEARCH_TURN_{i+1}>" for i, obs in enumerate(observations)])
-
-        # 3. Thông tin về số lượt tra cứu hiện tại
-        turn_info = f"Đây là lượt xử lý thứ {current_turn} trên tối đa 2 lượt tra cứu cho câu hỏi này."
-        if current_turn >= 2:
-            turn_info += " LƯU Ý: Đây là cơ hội cuối cùng, bạn PHẢI đưa ra câu trả lời cuối cùng (<final_answer>) ngay bây giờ, không được dùng <call_search> nữa."
-
-        # 4. Kết hợp thành Prompt cuối cùng (Hardened)
-        return f"""{self.system_prompt}
-
-<SEARCH_LIMIT_INFO>
-{turn_info}
-</SEARCH_LIMIT_INFO>
-
-<CONVERSATION_HISTORY>
-{history_str}
-</CONVERSATION_HISTORY>
-
-<CURRENT_SEARCH_DATA>
-{obs_str}
-</CURRENT_SEARCH_DATA>
-
-<USER_INPUT_STRICT_ZONE>
-Câu hỏi hiện tại của người dùng: {user_query}
-</USER_INPUT_STRICT_ZONE>
-
-HÃY NHỚ: Nếu dữ liệu trong <CURRENT_SEARCH_DATA> vẫn không có thông tin cần thiết sau 2 lượt tra cứu, hãy trả lời: "Xin lỗi, dữ liệu pháp luật hiện tại của tôi không có thông tin về vấn đề này."
-"""
-
-    async def _call_gemini_raw(self, prompt: str, api_key: str, model_name: str) -> str:
-        base_url = os.getenv("GEMINI_API_URL", "https://generativelanguage.googleapis.com").rstrip("/")
-        
-        # Determine if we should append the key to the URL (needed for official API and our Mock server)
-        # We always append if api_key is present, unless it's explicitly a localhost/0.0.0.0 target that might not want it
-        # Luôn đính kèm key vào URL vì Mock server và Gemini API đều cần nó để định danh
-        url = f"{base_url}/v1beta/models/{model_name}:generateContent?key={api_key}"
-        key_preview = f"{api_key[:8]}..." if api_key else "MISSING"
-        
-        if any(local in base_url for local in ["localhost", "0.0.0.0", "127.0.0.1", "google-mock", "bd_legal_mock_server"]):
-            logger.info(f"🔗 [MOCK] Calling local mock server: {url.split('?')[0]} | Key: {key_preview}")
-        else:
-            logger.info(f"🔗 [API] Calling Gemini API: {url.split('?')[0]} | Key: {key_preview}")
-
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}], 
-            "generationConfig": {"temperature": 0.1},
-            "safetySettings": [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
-            ]
-        }
-        max_retries = 3
-        async with httpx.AsyncClient() as client:
-            for attempt in range(max_retries):
-                try:
-                    response = await client.post(url, json=payload, timeout=90.0)
-                    response.raise_for_status()
-                    data = response.json()
-                    
-                    if not data.get("candidates") or not data["candidates"][0].get("content"):
-                        return f"<final_answer>Lỗi: {data.get('candidates', [{}])[0].get('finishReason', 'Không có phản hồi')}</final_answer>"
-
-                    return data["candidates"][0]["content"]["parts"][0]["text"]
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(2)
-                        continue
-                    return f"<final_answer>Lỗi kết nối Gemini: {str(e)}</final_answer>"

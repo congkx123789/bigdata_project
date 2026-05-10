@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from pymilvus import Collection, connections
 from sentence_transformers import SentenceTransformer
@@ -18,7 +19,11 @@ from agentic_rag.agent import AgenticRAG
 
 app = FastAPI(title="Nexus AI RAG Engine", version="1.2.0")
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
 logger = logging.getLogger("ai_rag_engine")
 
 
@@ -32,14 +37,13 @@ class InferenceRequest(BaseModel):
     doc_id: str | None = None
     session_id: str = "default"
     history: list[HistoryMessage] = Field(default_factory=list)
-    provider: Literal["local", "google"] = "local"
+    provider: Literal["local", "google"] = "google"
     google_api_key: str | None = None
-    google_model: str = "gemini-3.1-flash-lite-preview"
+    google_model: str = "gemini-2.0-flash"
     retrieve_only: bool = False
 
+GOOGLE_API_KEY = os.getenv("DEFAULT_GOOGLE_API_KEY", "")
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
 MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")
 MILVUS_PORT = os.getenv("MILVUS_PORT", "19530")
 MILVUS_COLLECTION = os.getenv("MILVUS_COLLECTION", "document_vectors")
@@ -125,81 +129,45 @@ def startup_event() -> None:
         logger.warning(f"Startup retrieval init failed, will retry on first request: {exc}")
 
 
-async def get_ollama_response(prompt: str) -> str:
-    # ANTI-CRASH: Retry logic for local LLM
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(
-                    f"{OLLAMA_URL}/api/generate",
-                    json={
-                        "model": OLLAMA_MODEL,
-                        "prompt": prompt,
-                        "stream": False,
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
-                return data.get("response", "Không có câu trả lời từ AI.")
-        except Exception as exc:
-            if attempt == max_retries - 1:
-                raise exc
-            logger.warning(f"Ollama attempt {attempt+1} failed, retrying... {exc}")
-            await asyncio.sleep(1)
-    return "Lỗi kết nối Ollama sau nhiều lần thử."
-
-
-async def get_gemini_response(prompt: str, api_key: str) -> str:
-    # Google AI Studio (Gemini) REST API
-    # Gemini 2.0 Flash is recommended for speed and availability
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-    
-    payload = {
-        "contents": [
-            {
-                "parts": [{"text": prompt}]
-            }
-        ],
-        "generationConfig": {
-            "temperature": 0.7,
-            "topK": 40,
-            "topP": 0.95,
-            "maxOutputTokens": 2048,
-        }
-    }
-
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(url, json=payload)
-        if response.status_code != 200:
-            error_data = response.json()
-            error_msg = error_data.get("error", {}).get("message", "Unknown Gemini error")
-            raise Exception(f"Gemini API Error: {error_msg}")
-        
-        data = response.json()
-        try:
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError):
-            return "Lỗi phân giải phản hồi từ Gemini."
-
-
+# Gemini và các logic LLM đã được chuyển vào AgenticRAG
 DEFAULT_GOOGLE_API_KEY = os.getenv("DEFAULT_GOOGLE_API_KEY", "")
-# Khởi tạo Agent một lần duy nhất để tiết kiệm VRAM
-agent = AgenticRAG(model_name=OLLAMA_MODEL, base_url=f"{OLLAMA_URL}/v1")
+# ANTI-CRASH: Limit concurrent inferences to protect GPU VRAM
+# Adjust MAX_CONCURRENT based on your GPU capacity (Blackwell RTX 5000: 10-15 concurrent)
+MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "10"))
+inference_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+# Khởi tạo Agent một lần duy nhất
+agent = AgenticRAG()
 
 @app.post("/internal/inference")
 async def run_inference(req: InferenceRequest):
+    # FAST PATH: Retrieve only (for stress testing and internal lookups)
+    if req.retrieve_only:
+        try:
+            context, sources = get_context(req.query, k=TOP_K)
+            return {
+                "answer": "Retrieve only mode.",
+                "sources": sources,
+                "used_context": context,
+                "timings": {"retrieval": 0.5} # Placeholder
+            }
+        except Exception as exc:
+            return {"answer": f"Retrieval failed: {exc}", "sources": []}
+
     async with inference_semaphore:
         try:
             # Chạy suy luận Agentic Loop
             # Ưu tiên key của người dùng nếu có, nếu không dùng key hệ thống mặc định
             actual_key = req.google_api_key or DEFAULT_GOOGLE_API_KEY
             
-            result = agent.run(
+            # Chuyển đổi HistoryMessage sang định dạng Agent cần
+            history_list = [{"role": h.role, "content": h.content} for h in req.history]
+
+            # Chạy suy luận Agentic Loop
+            result = await agent.run(
                 req.query, 
-                provider=req.provider, 
                 api_key=actual_key,
-                model_name=req.google_model
+                model_name=req.google_model,
+                history=history_list
             )
             
             # Phân tách kết quả
@@ -224,6 +192,7 @@ async def run_inference(req: InferenceRequest):
                 "answer": answer,
                 "sources": formatted_sources,
                 "used_context": "Deep Agentic Search - Gold Standard V2 Applied.",
+                "timings": result.get("timings", {})
             }
 
         except Exception as exc:
@@ -234,6 +203,43 @@ async def run_inference(req: InferenceRequest):
                 "used_context": "",
             }
 
+
+
+@app.post("/internal/inference_stream")
+async def run_inference_stream(req: InferenceRequest):
+    """Endpoint hỗ trợ Streaming kết quả."""
+    try:
+        actual_key = req.google_api_key or DEFAULT_GOOGLE_API_KEY
+        if not actual_key:
+            raise HTTPException(status_code=400, detail="Missing API Key")
+
+        history_list = []
+        if req.history:
+            for m in req.history:
+                history_list.append({"role": m.role, "content": m.content})
+
+        async def generate():
+            async for chunk in agent.run_stream(
+                req.query, 
+                api_key=actual_key,
+                model_name=req.google_model,
+                history=history_list
+            ):
+                yield chunk
+
+        return StreamingResponse(
+            generate(), 
+            media_type="text/plain", # Internal stream uses plain text to avoid SSE overhead
+            headers={
+                "X-Accel-Buffering": "no",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            }
+        )
+
+    except Exception as exc:
+        logger.exception("Streaming inference failed")
+        return StreamingResponse(iter([f"Error: {exc}"]), media_type="text/plain")
 
 
 if __name__ == "__main__":

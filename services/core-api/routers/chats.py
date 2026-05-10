@@ -6,6 +6,7 @@ import os
 
 import httpx
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from database import get_session_history, save_message, get_user_sessions, create_session, update_session_title
@@ -13,7 +14,7 @@ from database import get_session_history, save_message, get_user_sessions, creat
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 
 AI_ENGINE_URL = os.getenv("AI_ENGINE_URL", "http://localhost:8002")
-MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "12"))
+MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "50"))
 
 class ChatMessage(BaseModel):
     message: str
@@ -21,7 +22,7 @@ class ChatMessage(BaseModel):
     user_id: str = "anonymous"
     provider: str = "google"
     api_key: str | None = None
-    google_model: str = "gemini-3.1-flash-lite-preview"
+    google_model: str = "gemini-2.0-flash"
     retrieve_only: bool = False
 
 @router.get("/list")
@@ -53,22 +54,25 @@ async def send_message(msg: ChatMessage):
     # 1. Khởi tạo session nếu chưa có
     create_session(msg.session_id, msg.user_id)
     
-    # 2. Lấy lịch sử từ database
+    # 2. Lưu tin nhắn của USER vào database NGAY LẬP TỨC
+    save_message(msg.session_id, "user", msg.message)
+    
+    # 3. Lấy lịch sử từ database (bao gồm cả tin nhắn vừa lưu)
     history_payload = get_session_history(msg.session_id, limit=MAX_HISTORY_TURNS * 2)
 
-    # 3. Tự động cập nhật tiêu đề nếu là tin nhắn đầu tiên
-    if not history_payload and len(msg.message) > 5:
+    # 4. Tự động cập nhật tiêu đề nếu là tin nhắn đầu tiên
+    if len(history_payload) <= 1 and len(msg.message) > 5:
         title = msg.message[:30] + "..." if len(msg.message) > 30 else msg.message
         update_session_title(msg.session_id, title)
 
     try:
-        async with httpx.AsyncClient(timeout=150.0) as client:
+        async with httpx.AsyncClient(timeout=180.0) as client:
             response = await client.post(
                 f"{AI_ENGINE_URL}/internal/inference",
                 json={
                     "query": msg.message,
                     "session_id": msg.session_id,
-                    "history": history_payload,
+                    "history": history_payload[:-1], # Gửi lịch sử trước đó, không gửi chính nó
                     "provider": msg.provider,
                     "google_api_key": msg.api_key,
                     "google_model": msg.google_model,
@@ -79,18 +83,69 @@ async def send_message(msg: ChatMessage):
             ai_response = response.json()
     except Exception as exc:
         ai_response = {
-            "answer": f"[Error] AI Engine communication failed: {exc}",
+            "answer": f"[Error] Hệ thống đang bận hoặc quá tải. Vui lòng thử lại sau giây lát. (Chi tiết: {exc})",
             "sources": [],
         }
 
-    assistant_reply = ai_response.get("answer", "No response")
+    assistant_reply = ai_response.get("answer", "Hệ thống không phản hồi.")
 
-    # 4. Lưu vào database
-    save_message(msg.session_id, "user", msg.message)
-    save_message(msg.session_id, "assistant", assistant_reply)
+    # 5. Lưu câu trả lời của AI vào database kèm trích dẫn
+    import json
+    sources_json = json.dumps(ai_response.get("sources", []))
+    save_message(msg.session_id, "assistant", assistant_reply, metadata=sources_json)
 
     return {
         "reply": assistant_reply,
         "session_id": msg.session_id,
         "citations": ai_response.get("sources", []),
+        "timings": ai_response.get("timings", {})
     }
+
+@router.post("/send_stream")
+async def send_message_stream(msg: ChatMessage):
+    """
+    Endpoint hỗ trợ Streaming cho Frontend.
+    """
+    create_session(msg.session_id, msg.user_id)
+    save_message(msg.session_id, "user", msg.message)
+    history_payload = get_session_history(msg.session_id, limit=MAX_HISTORY_TURNS * 2)
+
+    async def stream_generator():
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            async with client.stream(
+                "POST",
+                f"{AI_ENGINE_URL}/internal/inference_stream",
+                json={
+                    "query": msg.message,
+                    "session_id": msg.session_id,
+                    "history": history_payload[:-1],
+                    "provider": msg.provider,
+                    "google_api_key": msg.api_key,
+                    "google_model": msg.google_model,
+                }
+            ) as response:
+                # Gửi ngay dòng đầu tiên để kích hoạt UI
+                first_chunk = "### 🛡️ Nexus Legal AI - Tiến trình xử lý:\n"
+                yield first_chunk
+                print(f"DEBUG: Khởi động stream với chunk đầu tiên: {first_chunk}", flush=True)
+                
+                full_reply = ""
+                # Sử dụng aiter_text() để httpx tự động xử lý decoding UTF-8 chuẩn xác (đặc biệt quan trọng cho tiếng Việt)
+                async for chunk in response.aiter_text():
+                    full_reply += chunk
+                    yield chunk
+                
+                # Lưu vào DB sau khi kết thúc stream
+                if full_reply:
+                    save_message(msg.session_id, "assistant", full_reply)
+
+    return StreamingResponse(
+        stream_generator(), 
+        media_type="text/event-stream", # Quay lại event-stream để Proxy nhận diện luồng
+        headers={
+            "X-Accel-Buffering": "no", # Quan trọng nhất cho Nginx
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Transfer-Encoding": "chunked",
+        }
+    )

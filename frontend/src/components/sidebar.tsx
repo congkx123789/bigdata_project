@@ -55,12 +55,13 @@ export function Sidebar({ className, onOpenSettings, onNewChat, onSelectSession,
             initial={false}
             animate={{ width: isDesktopCollapsed ? 80 : 300 }}
             className={cn(
-                "fixed md:relative inset-y-0 left-0 z-50 flex flex-col h-[100dvh] bg-zinc-950 border-r border-white/5 transition-all duration-300",
+                "fixed md:relative inset-y-0 left-0 z-50 grid grid-rows-[auto_auto_1fr_auto] bg-zinc-950 border-r border-white/5 transition-all duration-300",
                 isOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full md:translate-x-0",
                 className
             )}
+            style={{ height: 'calc(var(--vh, 1vh) * 100)' }}
         >
-            {/* Sidebar Header */}
+            {/* Sidebar Header - Row 1 */}
             <div className="p-6 flex items-center justify-between">
                 {!isDesktopCollapsed && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3">
@@ -85,7 +86,7 @@ export function Sidebar({ className, onOpenSettings, onNewChat, onSelectSession,
                 </Button>
             </div>
 
-            {/* New Chat Button */}
+            {/* New Chat Button - Row 2 */}
             <div className="px-4 pb-4">
                 <Button
                     onClick={() => {
@@ -102,8 +103,8 @@ export function Sidebar({ className, onOpenSettings, onNewChat, onSelectSession,
                 </Button>
             </div>
 
-            {/* Session List */}
-            <ScrollArea className="flex-1 px-4 py-2">
+            {/* Session List - Row 3 */}
+            <ScrollArea className="flex-1 min-h-0 px-4 py-2">
                 {!isDesktopCollapsed && (
                     <div className="space-y-6">
                         <div className="space-y-1">
@@ -164,8 +165,8 @@ export function Sidebar({ className, onOpenSettings, onNewChat, onSelectSession,
                 )}
             </ScrollArea>
 
-            {/* Sidebar Footer */}
-            <div className="p-4 mt-auto">
+            {/* Sidebar Footer - Row 4 */}
+            <div className="p-4">
                 <div className={cn(
                     "bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex items-center gap-3",
                     isDesktopCollapsed && "flex-col p-2"

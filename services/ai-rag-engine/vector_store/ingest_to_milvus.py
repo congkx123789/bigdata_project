@@ -20,23 +20,38 @@ from legal_parser import LegalParser
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 # cuDNN benchmark sẽ được bật sau khi import torch
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+torch.backends.cudnn.benchmark = True
 
-logging.basicConfig(level=logging.INFO)
+# Ghi log ra console và file với định dạng thời gian sạch
 logger = logging.getLogger("milvus_ingestor")
-# Ghi log ra file để có thể tail -f theo dõi trực tiếp
-fh = logging.FileHandler("/app/ingestion_progress.log", mode="w")
-fh.setLevel(logging.INFO)
-fh.setFormatter(logging.Formatter("%(asctime)s | %(message)s", datefmt="%H:%M:%S"))
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter("%(asctime)s | %(message)s", datefmt="%H:%M:%S")
+
+# File Handler
+# Dùng tên file mới để tránh lỗi Permission Denied từ file cũ của Docker
+log_path = os.path.join(os.path.dirname(__file__), "../../../ingestion_host.log")
+fh = logging.FileHandler(log_path, mode="w")
+fh.setFormatter(formatter)
+
+# Console Handler
+ch = logging.StreamHandler()
+ch.setFormatter(formatter)
+
 logger.addHandler(fh)
+logger.addHandler(ch)
+logger.propagate = False # Tránh lặp log
 
 # Config
-MILVUS_HOST = "milvus-standalone"
-MILVUS_PORT = "19530"
+MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")
+MILVUS_PORT = os.getenv("MILVUS_PORT", "19530")
 COLLECTION_NAME = "vi_legal_rag"
 MODEL_NAME = "BAAI/bge-m3"
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 DIMENSION = 1024
-NUM_WORKERS = 4  # Số luồng CPU parse HTML
+NUM_WORKERS = 12  # Tăng luồng để tận dụng CPU Blackwell mạnh mẽ
+GC_THRESHOLD = 100 # Dọn rác cực kỳ thường xuyên
 
 DATASET_CANDIDATES = [
     "datasets/vi-legal/data/content.parquet",
@@ -118,12 +133,13 @@ def load_model_optimized(device):
             model = model.half()
             logger.info("✅ FP16 enabled")
 
-        # torch.compile cho tối ưu đồ thị tính toán
-        try:
-            model[0].auto_model = torch.compile(model[0].auto_model, mode="reduce-overhead")
-            logger.info("✅ torch.compile enabled (reduce-overhead)")
-        except Exception as e:
-            logger.warning(f"⚠️ torch.compile skipped: {e}")
+        # Tắt torch.compile để tiết kiệm VRAM
+        # Tắt torch.compile để tiết kiệm VRAM
+        # try:
+        #     model[0].auto_model = torch.compile(model[0].auto_model, mode="reduce-overhead")
+        #     logger.info("✅ torch.compile enabled (Blackwell optimized)")
+        # except Exception as e:
+        #     logger.warning(f"⚠️ torch.compile skipped: {e}")
 
     return model
 
@@ -193,9 +209,14 @@ def main():
                         })
                     with doc_lock:
                         docs_processed += 1
-                except:
+                except Exception as e:
                     with doc_lock:
                         docs_processed += 1
+                        # Ghi lại ID bị lỗi để chạy lại sau
+                        err_log_path = os.path.join(os.path.dirname(__file__), "../../../failed_ingestion_ids.txt")
+                        with open(err_log_path, "a") as f_err:
+                            f_err.write(f"{row['id']} | Error: {str(e)}\n")
+                    logger.error(f"❌ Error processing doc {row['id']}: {e}")
                     continue
 
         # Chia dữ liệu cho các luồng
@@ -246,8 +267,8 @@ def main():
                         collection.flush()
 
                     f_batch, t_batch, txt_batch = [], [], []
-                    # GC chỉ chạy mỗi 500 chunks để tránh bottleneck
-                    if total_inserted % 500 == 0:
+                    # GC chạy mỗi 200 chunks để bảo vệ RAM
+                    if total_inserted % GC_THRESHOLD == 0:
                         gc.collect()
                         if device == "cuda": torch.cuda.empty_cache()
 

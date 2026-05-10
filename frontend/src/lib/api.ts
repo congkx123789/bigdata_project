@@ -64,6 +64,42 @@ export const api = {
         return await resp.json();
     },
 
+    async *sendMessageStream(
+        message: string,
+        sessionId: string = "default",
+        userId: string = "anonymous",
+        provider: string = "google",
+        apiKey?: string,
+        googleModel: string = "gemini-3.1-flash-lite-preview"
+    ): AsyncGenerator<string> {
+        const resp = await fetch(`${CORE_API_BASE_URL}/chats/send_stream`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                message,
+                session_id: sessionId,
+                user_id: userId,
+                provider,
+                api_key: apiKey,
+                google_model: googleModel
+            }),
+        });
+        
+        if (!resp.ok) throw new Error("Streaming failed");
+        
+        const reader = resp.body?.getReader();
+        if (!reader) throw new Error("ReadableStream not supported");
+        
+        const decoder = new TextDecoder();
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            console.log("DEBUG: Frontend nhận chunk:", chunk);
+            yield chunk;
+        }
+    },
+
     async uploadDocument(file: File) {
         const formData = new FormData();
         formData.append("file", file);
