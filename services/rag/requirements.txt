@@ -1,6 +1,0 @@
-pymilvus
-sentence-transformers
-langchain
-langchain-community
-ollama
-python-dotenv

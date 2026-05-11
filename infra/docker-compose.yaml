@@ -12,7 +12,7 @@ services:
       MINIO_ROOT_USER: admin
       MINIO_ROOT_PASSWORD: password123
     volumes:
-      - minio_data:/data
+      - ./data/minio:/data
     command: server /data --console-address ":9001"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
@@ -29,7 +29,7 @@ services:
       - ETCD_QUOTA_BACKEND_BYTES=4294967296
       - ETCD_SNAPSHOT_COUNT=10000
     volumes:
-      - etcd_data:/etcd
+      - ./data/etcd:/etcd
     command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir /etcd
 
   milvus:
@@ -50,7 +50,7 @@ services:
       - etcd
       - minio
     volumes:
-      - milvus_data:/var/lib/milvus
+      - ./data/milvus:/var/lib/milvus
 
   # Main Database (PostgreSQL)
   postgres:
@@ -63,7 +63,7 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
 
   # Cache (Redis)
   redis:
@@ -72,7 +72,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - ./data/redis:/data
 
   # Message Broker (Kafka)
   zookeeper:
@@ -119,26 +119,5 @@ services:
       - postgres
     command: start-dev
 
-  # Local LLM Server (Ollama)
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
 
-volumes:
-  minio_data:
-  etcd_data:
-  milvus_data:
-  postgres_data:
-  redis_data:
-  ollama_data:
+# Volumes are now managed via bind mounts in ./data directory to save space on Drive C

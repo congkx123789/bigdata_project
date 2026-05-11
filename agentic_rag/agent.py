@@ -5,7 +5,6 @@ import logging
 import httpx
 import time
 import asyncio
-from openai import OpenAI
 from typing import Dict, List, Any, Optional
 from agentic_rag.vector_store import VectorStore
 from agentic_rag.tools import TOOLS
@@ -17,10 +16,7 @@ load_dotenv()
 logger = logging.getLogger("AgentCore")
 
 class AgenticRAG:
-    def __init__(self, model_name: str = None, base_url: str = None):
-        self.model = model_name or os.getenv("OLLAMA_MODEL", "llama3.2:1b")
-        ollama_base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-        self.client = OpenAI(base_url=ollama_base_url, api_key="ollama")
+    def __init__(self, model_name: str = None):
         self.vector_store = VectorStore()
         
         self.system_prompt = """

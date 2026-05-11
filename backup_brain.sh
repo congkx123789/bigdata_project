@@ -52,4 +52,4 @@ echo "The following files have been generated in $(pwd):"
 ls -lh infra_*.tar.gz
 echo ""
 echo "🚀 You can now upload these files to Hugging Face:"
-echo "https://huggingface.co/datasets/Cong123779/bigdata-assets"
+echo "https://huggingface.co/datasets/Cong123779/bigdata-milvus-backup"

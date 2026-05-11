@@ -33,6 +33,11 @@ pid.txt
 !frontend/package.json
 !frontend/package-lock.json
 
+# === Data & Backups ===
+data/
+infra/data/
+*.tar.gz
+
 # === Python & OS ===
 __pycache__/
 *.py[cod]

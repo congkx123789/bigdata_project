@@ -34,7 +34,8 @@ Các assets này được thiết kế để hoạt động cùng với script `
     ```
 2.  **Chạy script Setup thông minh**:
     ```bash
-    export HF_TOKEN="your_huggingface_token_here"
+    export HF_TOKEN=""
+    # Dataset: https://huggingface.co/datasets/Cong123779/bigdata-milvus-backup
     ./setup.sh
     ```
 3.  **Xác nhận Restore**: Khi script hỏi `Do you want to restore data from Hugging Face?`, hãy chọn `y`.

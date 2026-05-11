@@ -37,7 +37,7 @@ class InferenceRequest(BaseModel):
     doc_id: str | None = None
     session_id: str = "default"
     history: list[HistoryMessage] = Field(default_factory=list)
-    provider: Literal["local", "google"] = "google"
+    provider: Literal["google"] = "google"
     google_api_key: str | None = None
     google_model: str = "gemini-2.0-flash"
     retrieve_only: bool = False
