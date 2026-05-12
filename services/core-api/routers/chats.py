@@ -125,10 +125,12 @@ async def send_message_stream(msg: ChatMessage):
                 }
             ) as response:
                 # Gửi dữ liệu mồi (Padding) để phá vỡ bộ đệm của Proxy/Cloudflare (ép xả dữ liệu ngay)
-                padding = ":" + " " * 1024 + "\n" 
+                # Gửi dữ liệu mồi (Padding) để phá vỡ bộ đệm của Proxy/Cloudflare
+                # Dùng định dạng đặc biệt để Frontend dễ dàng lọc bỏ
+                padding = "[STREAM_INIT]" + " " * 512 + "\n" 
                 yield padding
                 
-                # Gửi ngay dòng đầu tiên để kích hoạt UI
+                # Gửi ngay dòng đầu tiên để kích hoạt UI (Sẽ bị MessageItem lọc bỏ)
                 first_chunk = "### 🛡️ Nexus Legal AI - Tiến trình xử lý:\n"
                 yield first_chunk
                 print(f"DEBUG: Khởi động stream với chunk đầu tiên: {first_chunk}", flush=True)

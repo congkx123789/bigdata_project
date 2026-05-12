@@ -1,4 +1,5 @@
 # === DO NOT PUSH (Heavy Data) ===
+data/
 datasets/
 venv/
 node_modules/

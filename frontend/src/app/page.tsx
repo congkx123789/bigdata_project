@@ -26,6 +26,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [forwardedInput, setForwardedInput] = React.useState<string | undefined>(undefined);
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
 
   // Anonymous Identification
   const [userId, setUserId] = React.useState<string>("anonymous");
@@ -143,6 +144,12 @@ export default function Home() {
     };
     setMessages((prev) => [...prev, userMessage]);
     setIsGenerating(true);
+    
+    // NGẮT LUỒNG CŨ NẾU ĐANG CHẠY
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
 
     const assistantId = (Date.now() + 1).toString();
     setMessages((prev) => [
@@ -158,7 +165,8 @@ export default function Home() {
         userId,
         settings.provider,
         settings.provider === "google" ? settings.googleApiKey : undefined,
-        settings.provider === "google" ? settings.googleModel : "gemini-2.0-flash"
+        settings.provider === "google" ? settings.googleModel : "gemini-2.0-flash",
+        abortControllerRef.current.signal
       );
 
       for await (const chunk of stream) {
@@ -209,8 +217,12 @@ export default function Home() {
             : msg
         )
       );
-    } catch (error) {
-      console.error("Chat error:", error);
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log("DEBUG: Luồng cũ đã được ngắt thành công.");
+        return;
+      }
+      console.error("Chat error:", err);
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantId
@@ -254,28 +266,28 @@ export default function Home() {
       />
 
       <main
-        className="flex-1 grid grid-rows-[auto_1fr_auto] min-w-0 overflow-hidden relative bg-zinc-50/50 dark:bg-zinc-950/50 safe-top"
+        className="flex-1 flex flex-col min-w-0 overflow-hidden relative bg-zinc-50/50 dark:bg-zinc-950/50 safe-top"
         style={{ height: 'calc(var(--vh, 1vh) * 100)' }}
       >
         {/* Unified Header - Row 1 */}
-        <header className="bg-background/80 backdrop-blur-xl border-b border-zinc-200 dark:border-zinc-800 transition-all duration-300 z-10">
-          <div className="max-w-6xl mx-auto flex items-center justify-between p-3 md:p-4">
+        <header className="bg-background/80 backdrop-blur-xl border-b border-zinc-200 dark:border-zinc-800 transition-all duration-300 z-10 sticky top-0">
+          <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3 md:px-6">
             <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => setIsSidebarOpen(true)}
-                className="h-10 w-10 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors md:hidden"
+                className="h-10 w-10 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors md:hidden border border-zinc-200 dark:border-zinc-800 flex items-center justify-center"
               >
                 <Menu className="h-6 w-6 text-zinc-700 dark:text-zinc-300" />
               </Button>
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-                  <span className="text-white font-black text-xs">NX</span>
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20 rotate-3">
+                  <span className="text-white font-black text-xs -rotate-3">NX</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="font-bold text-sm tracking-tight text-zinc-800 dark:text-zinc-200 leading-none">Nexus Legal AI</span>
-                  <span className="text-[10px] text-zinc-500 font-medium uppercase tracking-widest mt-0.5">RAG V15 • Gold Standard</span>
+                  <span className="font-bold text-sm tracking-tight text-zinc-800 dark:text-zinc-100 leading-none">Nexus Legal AI</span>
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-[0.15em] mt-1 opacity-70">Gold Standard RAG</span>
                 </div>
               </div>
             </div>

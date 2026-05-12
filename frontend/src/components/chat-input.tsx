@@ -83,7 +83,7 @@ export function ChatInput({ onSend, onStop, isGenerating, forwardedInput }: Chat
     }, [input]);
 
     return (
-        <div className="relative max-w-4xl mx-auto w-full px-4 md:px-8 pb-4 pt-2">
+        <div className="relative max-w-4xl mx-auto w-full px-2 md:px-8 pb-4 pt-2">
             <div
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleDrop}
@@ -139,8 +139,8 @@ export function ChatInput({ onSend, onStop, isGenerating, forwardedInput }: Chat
                     />
 
                     {/* Action Bar Below Textarea */}
-                    <div className="flex items-center justify-between mt-1 px-1">
-                        <div className="flex items-center gap-1 sm:gap-2">
+                    <div className="flex items-center justify-between mt-1 px-1 gap-2">
+                        <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar">
                             <input
                                 type="file"
                                 id="file-upload"
@@ -148,9 +148,9 @@ export function ChatInput({ onSend, onStop, isGenerating, forwardedInput }: Chat
                                 multiple
                                 onChange={handleFileChange}
                             />
-                            <label htmlFor="file-upload">
-                                <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9 rounded-full text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800">
-                                    <Paperclip className="h-4 w-4 sm:h-5 sm:w-5" />
+                            <label htmlFor="file-upload" className="shrink-0">
+                                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800">
+                                    <Paperclip className="h-5 w-5" />
                                 </Button>
                             </label>
 
@@ -159,32 +159,32 @@ export function ChatInput({ onSend, onStop, isGenerating, forwardedInput }: Chat
                                 size="icon"
                                 onClick={() => setIsRetrieveOnly(!isRetrieveOnly)}
                                 className={cn(
-                                    "h-8 w-8 sm:h-9 sm:w-9 rounded-full transition-colors",
+                                    "h-9 w-9 rounded-full transition-colors shrink-0",
                                     isRetrieveOnly ? "text-blue-400 bg-blue-900/30" : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
                                 )}
                                 title={isRetrieveOnly ? "Chế độ tìm trích dẫn (BGE Only)" : "Chế độ Chat (Full RAG)"}
                             >
-                                <Search className="h-4 w-4 sm:h-5 sm:w-5" />
+                                <Search className="h-5 w-5" />
                             </Button>
                         </div>
 
-                        <div>
+                        <div className="shrink-0 ml-auto">
                             {isGenerating ? (
                                 <Button
                                     size="icon"
                                     onClick={onStop}
-                                    className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-zinc-100 text-zinc-900 hover:bg-white"
+                                    className="h-10 w-10 rounded-xl bg-zinc-100 text-zinc-900 hover:bg-white shadow-lg"
                                 >
-                                    <Square className="h-3 w-3 sm:h-4 sm:w-4 fill-current" />
+                                    <Square className="h-4 w-4 fill-current" />
                                 </Button>
                             ) : (
                                 <Button
                                     size="icon"
                                     onClick={handleSend}
                                     disabled={!input.trim() && files.length === 0}
-                                    className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-zinc-100 text-zinc-900 hover:bg-white disabled:bg-zinc-800 disabled:text-zinc-600"
+                                    className="h-10 w-10 rounded-xl bg-zinc-100 text-zinc-900 hover:bg-white disabled:bg-zinc-800 disabled:text-zinc-600 shadow-lg"
                                 >
-                                    <Send className="h-3 w-3 sm:h-4 sm:w-4" />
+                                    <Send className="h-4 w-4" />
                                 </Button>
                             )}
                         </div>

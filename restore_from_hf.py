@@ -4,14 +4,16 @@ from pathlib import Path
 from huggingface_hub import hf_hub_download
 
 # --- Configuration ---
-TOKEN = os.getenv("HF_TOKEN", "your_token_here")
-REPO_ID = "Cong123779/bigdata-assets"
-VOLUMES = [
-    "infra_milvus_data",
-    "infra_etcd_data",
-    "infra_minio_data",
-    "infra_postgres_data",
-]
+TOKEN = os.getenv("HF_TOKEN", None) # Optional: Will work if repo is public
+REPO_ID = "Cong123779/bigdata-milvus-backup"
+
+# Mapping: volume_name -> specific_filename_on_hf
+BACKUP_MAPPING = {
+    "infra_etcd_data": "backup_etcd_1778149642.tar.gz",
+    "infra_milvus_data": "backup_milvus_1778147969.tar.gz",
+    "infra_minio_data": "backup_minio_1778149147.tar.gz",
+}
+
 BACKUP_DIR = Path("./hf_snapshots")
 # ---------------------
 
@@ -29,13 +31,12 @@ def ensure_volume(volume_name):
         print(f"Creating volume: {volume_name}")
         run_command(f"docker volume create {volume_name}")
 
-def restore_volume(volume_name):
-    print(f"--- Restoring volume: {volume_name} ---")
-    tar_name = f"{volume_name}.tar.gz"
+def restore_volume(volume_name, tar_name):
+    print(f"\n--- Restoring volume: {volume_name} ({tar_name}) ---")
     tar_path = BACKUP_DIR / tar_name
     
     if not tar_path.exists():
-        print(f"Downloading {tar_name} from Hugging Face...")
+        print(f"Downloading {tar_name} from Hugging Face ({REPO_ID})...")
         try:
             downloaded_path = hf_hub_download(
                 repo_id=REPO_ID,
@@ -47,6 +48,7 @@ def restore_volume(volume_name):
             print(f"Downloaded to {downloaded_path}")
         except Exception as e:
             print(f"Failed to download {tar_name}: {e}")
+            print("If this is a private repo, please set HF_TOKEN environment variable.")
             return
 
     ensure_volume(volume_name)
@@ -55,7 +57,7 @@ def restore_volume(volume_name):
     # We use 'rm -rf /data/*' to clear existing data before restore
     cmd = (
         f"docker run --rm -v {volume_name}:/data -v {BACKUP_DIR.absolute()}:/backup "
-        f"alpine sh -c 'rm -rf /data/* && tar xzf /backup/{tar_name} -C /data'"
+        f"alpine sh -c 'echo \"Cleaning /data...\" && rm -rf /data/* && echo \"Extracting {tar_name}...\" && tar xzf /backup/{tar_name} -C /data && echo \"Done.\"' "
     )
     run_command(cmd)
 
@@ -63,11 +65,11 @@ def main():
     BACKUP_DIR.mkdir(exist_ok=True)
     
     print(f"--- Starting Restoration from {REPO_ID} ---")
-    for vol in VOLUMES:
-        restore_volume(vol)
+    for vol, tar in BACKUP_MAPPING.items():
+        restore_volume(vol, tar)
         
     print("\n--- Restoration Complete ---")
-    print("You can now start the infrastructure using: docker compose -f infra/docker-compose.yaml up -d")
+    print("Infrastructure data has been restored to Docker volumes.")
 
 if __name__ == "__main__":
     main()

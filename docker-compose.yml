@@ -22,7 +22,7 @@ services:
     environment:
       - ETCD_AUTO_COMPACTION_RETENTION=1
       - ETCD_QUOTA_BACKEND_BYTES=4294967296
-    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir /etcd
+    command: etcd --advertise-client-urls http://bd_legal_etcd:2379 --listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
     volumes:
       - milvus_etcd_data:/etcd
     networks:
@@ -34,7 +34,7 @@ services:
     container_name: bd_legal_milvus
     command: [ "milvus", "run", "standalone" ]
     environment:
-      ETCD_ENDPOINTS: milvus-etcd:2379
+      ETCD_ENDPOINTS: bd_legal_etcd:2379
       MINIO_ADDRESS: milvus-minio:9000
       MINIO_ACCESS_KEY_ID: admin
       MINIO_SECRET_ACCESS_KEY: password123
@@ -62,7 +62,7 @@ services:
       - .:/app
     command: bash -c "pip install fastapi uvicorn && python3 mock_google_server.py"
     ports:
-      - "9000:9000"
+      - "9005:9000"
     networks:
       - bigdata_internal
     restart: unless-stopped

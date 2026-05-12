@@ -23,6 +23,9 @@ class VectorStore:
         embedding_model_name = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
         logger.info(f"Loading Embedding Model ({embedding_model_name}) on {self.device}...")
         self.model = SentenceTransformer(embedding_model_name, device=self.device)
+        if self.device == "cuda":
+            self.model = self.model.to(torch.bfloat16)
+            logger.info("VectorStore Model optimized with bfloat16")
         
         # 2. Khởi tạo BGE Reranker Model trên GPU
         reranker_model_name = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
@@ -73,7 +76,7 @@ class VectorStore:
         if any(word in query_text.lower() for word in ["điều", "luật", "nghị định", "thông tư"]):
             keywords = re.findall(r"(Điều \d+|Luật [\w\s]+|Nghị định \d+)", query_text, re.IGNORECASE)
             for kw in keywords:
-                expr = f"text LIKE '%{kw}%'"
+                expr = f'text LIKE "{kw}%"'
                 try:
                     kw_results = self.collection.query(
                         expr=expr,

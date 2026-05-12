@@ -62,6 +62,19 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
 """
         self.chat_history = [{"role": "system", "content": self.system_prompt}]
 
+    def _sanitize_error(self, error_msg: str) -> str:
+        """Lọc bỏ API Key hoặc thông tin nhạy cảm khỏi thông báo lỗi."""
+        import re
+        if not error_msg: return "Lỗi không xác định"
+        # Xóa các chuỗi giống Gemini API Key (AIza...)
+        sanitized = re.sub(r'AIza[0-9A-Za-z-_]{35}', '[REDACTED_KEY]', str(error_msg))
+        # Nếu lỗi nhạy cảm, trả về thông báo chung cho người dùng
+        if any(x in sanitized for x in ["API_KEY", "INVALID_ARGUMENT", "403", "PERMISSION_DENIED"]):
+            return "Hệ thống gặp sự cố xác thực (Key Error). Vui lòng liên hệ quản trị viên."
+        if "429" in sanitized or "quota" in sanitized.lower():
+            return "Hệ thống đang tạm thời quá tải (Rate Limit). Vui lòng chờ giây lát."
+        return sanitized[:150]
+
     def _clean_text(self, text: str) -> str:
         """Làm sạch HTML và rác văn bản tại chỗ."""
         if not text: return ""
@@ -185,55 +198,100 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
         return title[:60].strip() + "..." if len(title) > 65 else title
 
     def _get_final_citations(self, observations: List[str]) -> List[Dict]:
-        """Tổng hợp và chuẩn hóa trích dẫn từ các quan sát tìm kiếm."""
+        """Tổng hợp và chuẩn hóa trích dẫn từ các quan sát tìm kiếm nếu AI quên liệt kê."""
         if not observations:
             return []
-        # Hiện tại trả về list rỗng để tránh crash, trích dẫn chính sẽ do AI nhả ra
-        return []
+        
+        fallback_citations = []
+        # Duyệt qua các lượt tra cứu (observations)
+        for obs in observations:
+            # Lấy các dòng bắt đầu bằng dấu gạch ngang (nội dung trích xuất)
+            lines = obs.split("\n")
+            for line in lines:
+                if line.strip().startswith("- "):
+                    content = line.strip()[2:]
+                    if len(content) > 20:
+                        # Thử lấy tiêu đề từ dòng nội dung (ví dụ: "Điều 11. ...")
+                        title_match = re.match(r"(Điều \d+|Khoản \d+)", content)
+                        source = title_match.group(0) if title_match else "Căn cứ pháp luật"
+                        
+                        fallback_citations.append({
+                            "id": len(fallback_citations) + 1,
+                            "source": source,
+                            "content": content,
+                            "hierarchy": "" # Sẽ được bổ sung bởi _force_verbatim_content_direct
+                        })
+        
+        return fallback_citations[:10] # Giới hạn 10 trích dẫn hàng đầu
 
     def _force_verbatim_content_direct(self, citations: List[Dict], results: List[Dict]) -> List[Dict]:
         """Khôi phục nội dung BẢN GỐC và tự động sửa tiêu đề thông qua truy vết ngược."""
         final_citations = []
         seen_ids = set()
 
-        for c in citations:
-            idx = c.get("id")
+        for idx, c in enumerate(citations):
+            cite_id = c.get("id")
             found_res = None
-            
-            if isinstance(idx, (int, str)) and str(idx).isdigit():
-                val = int(idx)
+            # 1. Thử khớp theo ID (1, 2, 3...)
+            if isinstance(cite_id, (int, str)) and str(cite_id).isdigit():
+                val = int(cite_id)
                 if 1 <= val <= len(results):
                     found_res = results[val - 1]
             
-            if not found_res and c.get("source"):
+            # 2. Thử khớp theo Source/Title/Hierarchy (Fuzzy Match mạnh hơn)
+            if not found_res and (c.get("source") or c.get("hierarchy")):
+                search_term = str(c.get("source") or c.get("hierarchy") or "").lower()
+                # Tìm số điều (ví dụ: "Điều 11")
+                article_match = re.search(r"điều\s+(\d+)", search_term)
+                
                 for r in results:
-                    if any(word.lower() in r['content'].lower() for word in c['source'].split() if len(word) > 3):
+                    r_title = str(r.get("title") or "").lower()
+                    r_hierarchy = str(r.get("hierarchy") or "").lower()
+                    r_content = str(r.get("content") or "").lower()
+                    
+                    # Ưu tiên 1: Khớp chính xác số điều
+                    if article_match and f"điều {article_match.group(1)}" in (r_hierarchy + r_title + r_content[:200]):
+                        found_res = r
+                        break
+                    
+                    # Ưu tiên 2: Khớp từ khóa trong tiêu đề hoặc cây phân cấp
+                    if search_term in r_title or r_title in search_term or search_term in r_hierarchy:
+                        found_res = r
+                        break
+                    
+                    # Ưu tiên 3: Khớp các từ khóa quan trọng
+                    important_words = [w for w in search_term.split() if len(w) > 4]
+                    if any(word in r_title or word in r_hierarchy for word in important_words):
                         found_res = r
                         break
             
+            # 3. Nếu vẫn không thấy, lấy kết quả đầu tiên làm fallback (Để không bao giờ trống nội dung)
+            if not found_res and results:
+                found_res = results[0]
+
             if found_res:
-                cid = found_res['chunk_id']
+                cid = found_res.get('chunk_id') or "unknown"
                 if cid not in seen_ids:
-                    # 1. Làm sạch nội dung tại chỗ
-                    c["content"] = self._clean_text(found_res["content"])
+                    # 1. Gán nội dung nguyên văn (Ưu tiên nội dung từ DB)
+                    db_title = str(found_res.get("title") or "").strip()
+                    c["content"] = found_res.get("content") or "Nội dung đang được cập nhật..."
+                    c["source"] = c.get("source") or db_title or "Văn bản luật"
                     
-                    # 2. Truy vết tiêu đề chuẩn (Logic mới)
-                    raw_title = found_res.get("title", "")
-                    short_title = self._shorten_title(raw_title)
+                    logger.info(f"✅ Matched Citation: ID={c.get('id')}, Source={c['source'][:50]}...")
                     
-                    if not short_title:
-                        # Nếu tiêu đề trong DB bị "nông" hoặc rác, đi tìm tiêu đề ở Parent
-                        parent_title = self._get_parent_title(cid)
-                        short_title = self._shorten_title(parent_title) or "Văn bản Pháp luật"
-                    
-                    c["root_title"] = short_title
-                    
-                    if not c.get("source") or "Căn cứ" in c["source"]:
-                        c["source"] = short_title
+                    # Rút gọn ID để không bị tràn form
+                    raw_id = str(c.get("id") or idx or cid.split("_")[-1])
+                    c["id"] = raw_id[-3:] if len(raw_id) > 3 else raw_id
                     
                     final_citations.append(c)
                     seen_ids.add(cid)
-            elif c.get("content") and len(c["content"]) > 50:
+            else:
+                # TRƯỜNG HỢP KHÔNG KHỚP: Vẫn giữ lại để người dùng thấy nguồn AI trích dẫn
+                if not c.get("content"):
+                    c["content"] = c.get("details") or c.get("summary") or "Nội dung trích dẫn đang được AI tổng hợp từ dữ liệu gốc..."
+                
+                c["id"] = c.get("id") or (idx + 1)
+                c["source"] = c.get("source") or "Tài liệu tham khảo"
                 final_citations.append(c)
 
         return final_citations
@@ -246,10 +304,16 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
         payload = {
             "contents": [{"parts": [{"text": prompt}]}], 
             "generationConfig": {"temperature": 0.1},
+            "safetySettings": [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+            ]
         }
         
-        max_retries = 3
-        retry_delay = 2
+        max_retries = 5
+        retry_delay = 3
         
         for attempt in range(max_retries):
             try:
@@ -270,7 +334,6 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
                         async for line in response.aiter_lines():
                             if line.startswith("data: "):
                                 try:
-                                    import json
                                     data = json.loads(line[6:])
                                     chunk_text = data["candidates"][0]["content"]["parts"][0]["text"]
                                     yield chunk_text
@@ -278,59 +341,76 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
                                     continue
                         return # Success
             except Exception as e:
-                logger.error(f"❌ Gemini Stream Exception: {e}")
+                error_detail = str(e)
+                logger.error(f"❌ Gemini Stream Exception: {error_detail}")
                 if attempt == max_retries - 1:
-                    yield f"Lỗi kết nối Gemini: {str(e)}"
+                    # Lọc sạch lỗi trước khi gửi cho người dùng
+                    yield f"Lỗi kết nối Gemini: {self._sanitize_error(error_detail)}"
                 await asyncio.sleep(1)
 
     async def run_stream(self, user_query: str, api_key: str, model_name: str = "gemini-2.0-flash", history: List[Dict] = None):
-        """Quy trình Agentic với Real Streaming."""
-        print(f"DEBUG: Agent bắt đầu xử lý query: {user_query[:50]}...", flush=True)
+        """Quy trình RAG đầy đủ với Streaming và Trích dẫn."""
         start_total = time.time()
         current_history = history if history else []
         observations = [] 
-
-        yield "### 🛡️ Nexus Legal AI - Tiến trình xử lý:\n"
-        yield "1. 🔍 **Phân tích yêu cầu**: Đang xác định phạm vi pháp lý và từ khóa tra cứu...\n"
-        
-        # --- BƯỚC 1: HỎI AI XEM CÓ CẦN TRA CỨU KHÔNG ---
-        prompt_t1 = self._build_professional_agent_prompt(user_query, current_history, observations, 1)
-        resp_t1 = await self._call_gemini_raw(prompt_t1, api_key, model_name)
-        
-        # Kiểm tra xem AI có muốn tra cứu không
-        if "<call_search>" in resp_t1:
-            import re
-            search_match = re.search(r"<call_search>(.*?)</call_search>", resp_t1, re.DOTALL)
-            if search_match:
-                query_to_search = search_match.group(1).strip()
-                yield f"2. 📡 **Tra cứu dữ liệu**: Đang tìm kiếm quy định về \"{query_to_search}\"...\n"
-                search_results = self.vector_store.search(query_to_search, k=6)
-                yield f"3. 📚 **Trích xuất kiến thức**: Tìm thấy {len(search_results)} căn cứ liên quan. Đang chuẩn bị dữ liệu...\n"
-                obs_content = "KẾT QUẢ TRA CỨU:\n" + "\n".join([f"- {r['content']}" for r in search_results])
-                observations.append(obs_content)
-        else:
-            yield "2. 💡 **Sử dụng kiến thức hệ thống**: Đã có đủ thông tin để trả lời trực tiếp.\n"
-
-        yield "4. ⚖️ **Soạn thảo văn bản**: Đang tổng hợp căn cứ và đưa ra tư vấn chuyên sâu...\n"
-        yield "---\n\n" # Dấu ngăn cách để Frontend biết bắt đầu phần trả lời chính
-
-        # --- BƯỚC 2: AI TỔNG HỢP VÀ TRẢ LỜI (STREAMING THẬT) ---
-        prompt_t2 = self._build_professional_agent_prompt(user_query, current_history, observations, 2)
-        
         full_final_response = ""
-        async for chunk in self._call_gemini_stream(prompt_t2, api_key, model_name):
-            full_final_response += chunk
-            yield chunk
+        search_results = [] # ĐẢM BẢO LUÔN CÓ BIẾN NÀY ĐỂ TRÍCH XUẤT CONTENT
 
-        # Sau khi stream xong văn bản, mới gửi JSON trích dẫn ẩn
-        parsed = self._parse_fallback_content(full_final_response)
-        final_citations = parsed["citations"] if parsed["citations"] else self._get_final_citations(observations)
-        
-        if final_citations:
+        try:
+            yield "[STATUS]🔍 **Phân tích yêu cầu**: Đang xác định phạm vi pháp lý và các quy định liên quan...[/STATUS]\n"
+            
+            # --- BƯỚC 1: HỎI AI XEM CÓ CẦN TRA CỨU KHÔNG ---
+            prompt_t1 = self._build_professional_agent_prompt(user_query, current_history, observations, 1)
+            resp_t1 = await self._call_gemini_raw(prompt_t1, api_key, model_name)
+            
+            # PHÒNG THỦ: Đảm bảo resp_t1 không bao giờ rỗng
+            if not resp_t1:
+                logger.warning("⚠️ Step 1 returned None. Falling back to empty response.")
+                resp_t1 = ""
+
+            # Kiểm tra xem AI có muốn tra cứu không
+            if "<call_search>" in resp_t1:
+                import re
+                search_match = re.search(r"<call_search>(.*?)</call_search>", resp_t1, re.DOTALL)
+                if search_match:
+                    query_to_search = search_match.group(1).strip()
+                    yield f"[STATUS]📡 **Kết nối dữ liệu**: Đang truy xuất căn cứ pháp luật cho: \"{query_to_search}\"...[/STATUS]\n"
+                    search_results = self.vector_store.search(query_to_search, k=6)
+                    yield f"[STATUS]📚 **Trích xuất kiến thức**: Đã tìm thấy {len(search_results)} văn bản luật liên quan...[/STATUS]\n"
+                    obs_content = "KẾT QUẢ TRA CỨU:\n" + "\n".join([f"- {r['content']}" for r in search_results])
+                    observations.append(obs_content)
+                    logger.info(f"🔍 [KNOWLEDGE EXTRACTED] Sending {len(search_results)} chunks to AI. Preview: {obs_content[:500]}...")
+            else:
+                yield "[STATUS]💡 **Phân tích trí tuệ**: Đã nắm rõ các quy định liên quan, đang bắt đầu tư vấn...[/STATUS]\n"
+
+            yield f"[STATUS]⚖️ **Soạn thảo tư vấn**: Đang tổng hợp các căn cứ và soạn thảo câu trả lời chuyên sâu...[/STATUS]\n"
+            yield "---\n\n" # Dấu ngăn cách để Frontend biết bắt đầu phần trả lời chính
+
+            # --- BƯỚC 2: AI TỔNG HỢP VÀ TRẢ LỜI (STREAMING THẬT) ---
+            prompt_t2 = self._build_professional_agent_prompt(user_query, current_history, observations, 2)
+            async for chunk in self._call_gemini_stream(prompt_t2, api_key, model_name):
+                full_final_response += chunk
+                yield chunk
+
+        except Exception as e:
+            logger.error(f"🚨 Critical Error in run_stream: {str(e)}")
+            error_msg = f"\n\n⚠️ **Lỗi hệ thống**: Đã xảy ra sự cố trong quá trình xử lý ({str(e)}). Vui lòng thử lại sau giây lát."
+            yield error_msg
+            full_final_response += error_msg
+
+        finally:
+            # LUÔN LUÔN TRẢ VỀ TRÍCH DẪN (DÙ CÓ LỖI HAY KHÔNG)
+            parsed = self._parse_fallback_content(full_final_response)
+            # Lấy search_results từ biến local nếu AI có tra cứu
+            active_search_results = search_results if 'search_results' in locals() else []
+            
+            raw_citations = parsed["citations"] if parsed["citations"] else self._get_final_citations(observations)
+            final_citations = self._force_verbatim_content_direct(raw_citations, active_search_results)
+            
             import json
             yield f"\n\n[CITATIONS_JSON]{json.dumps(final_citations, ensure_ascii=False)}[/CITATIONS_JSON]"
-        
-        logger.info(f"✨ [PROCESS DONE] Total time: {time.time() - start_total:.2f}s")
+            
+            logger.info(f"✨ [PROCESS DONE] Total time: {time.time() - start_total:.2f}s")
 
     async def run(self, user_query: str, api_key: str, model_name: str = "gemini-2.0-flash", history: List[Dict] = None, **kwargs) -> Dict:
         """Quy trình Agentic Đồng bộ (Dùng cho API cũ)."""
@@ -411,11 +491,18 @@ HÃY NHỚ: Nếu dữ liệu trong <CURRENT_SEARCH_DATA> vẫn không có thôn
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
             ]
         }
-        max_retries = 3
-        async with httpx.AsyncClient() as client:
-            for attempt in range(max_retries):
-                try:
-                    response = await client.post(url, json=payload, timeout=90.0)
+        max_retries = 5
+        retry_delay = 3
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient(timeout=90.0) as client:
+                    response = await client.post(url, json=payload)
+                    if response.status_code == 429:
+                        logger.warning(f"⚠️ Gemini Raw 429 on attempt {attempt+1}. Retrying in {retry_delay}s...")
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                    
                     response.raise_for_status()
                     data = response.json()
                     
@@ -423,8 +510,10 @@ HÃY NHỚ: Nếu dữ liệu trong <CURRENT_SEARCH_DATA> vẫn không có thôn
                         return f"<final_answer>Lỗi: {data.get('candidates', [{}])[0].get('finishReason', 'Không có phản hồi')}</final_answer>"
 
                     return data["candidates"][0]["content"]["parts"][0]["text"]
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(2)
-                        continue
-                    return f"<final_answer>Lỗi kết nối Gemini: {str(e)}</final_answer>"
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"⚠️ Gemini Raw Error on attempt {attempt+1}: {str(e)}. Retrying...")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                return f"<final_answer>Lỗi kết nối Gemini sau {max_retries} lần thử: {str(e)}</final_answer>"

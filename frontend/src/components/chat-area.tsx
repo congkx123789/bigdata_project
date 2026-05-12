@@ -67,24 +67,24 @@ export function ChatArea({ messages }: ChatAreaProps) {
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -20 }}
-                            className="flex-1 flex flex-col items-center p-8 text-center space-y-6 pt-10 md:pt-32"
+                            className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-8"
                         >
                             <motion.div
                                 initial={{ scale: 0.8, opacity: 0 }}
                                 animate={{ scale: 1, opacity: 1 }}
                                 transition={{ duration: 0.5, type: "spring" }}
-                                className="h-16 w-16 md:h-24 md:w-24 rounded-2xl md:rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center shadow-2xl rotate-6 relative"
+                                className="h-20 w-20 md:h-28 md:w-28 rounded-[1.5rem] md:rounded-[2rem] bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center shadow-2xl rotate-3 relative group"
                             >
-                                <div className="absolute inset-0 rounded-2xl md:rounded-3xl bg-blue-400/20 blur-xl animate-pulse" />
-                                <span className="text-2xl md:text-4xl font-black text-white z-10">NX</span>
+                                <div className="absolute inset-0 rounded-[1.5rem] md:rounded-[2rem] bg-blue-400/30 blur-2xl animate-pulse" />
+                                <span className="text-3xl md:text-5xl font-black text-white z-10 -rotate-3 transition-transform group-hover:scale-110">NX</span>
                             </motion.div>
                             <div className="space-y-4">
-                                <h1 className="text-3xl md:text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-zinc-900 to-zinc-500 dark:from-white dark:to-zinc-500">
+                                <h1 className="text-4xl md:text-6xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-zinc-900 to-zinc-600 dark:from-white dark:to-zinc-500">
                                     Nexus Legal AI
                                 </h1>
-                                <p className="text-zinc-500 dark:text-zinc-400 max-w-md leading-relaxed font-medium text-xs md:text-sm">
-                                    Hệ thống Tư vấn Pháp luật Cao cấp sử dụng công nghệ RAG V15. <br />
-                                    <span className="text-blue-500 dark:text-blue-400">Trích xuất chính xác - Phân tích chuyên sâu - Tư vấn tận tâm.</span>
+                                <p className="text-zinc-500 dark:text-zinc-400 max-w-sm leading-relaxed font-bold text-[10px] md:text-sm uppercase tracking-[0.1em]">
+                                    Hệ thống Tư vấn Pháp luật Cao cấp <br className="hidden md:block" />
+                                    <span className="text-blue-500 dark:text-blue-400 opacity-80 mt-2 block">Cơ sở dữ liệu 1.1 triệu văn bản pháp quy</span>
                                 </p>
                             </div>
                         </motion.div>

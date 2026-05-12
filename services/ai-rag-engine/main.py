@@ -39,7 +39,7 @@ class InferenceRequest(BaseModel):
     history: list[HistoryMessage] = Field(default_factory=list)
     provider: Literal["local", "google"] = "google"
     google_api_key: str | None = None
-    google_model: str = "gemini-2.0-flash"
+    google_model: str = "gemini-3.1-flash-lite"
     retrieve_only: bool = False
 
 GOOGLE_API_KEY = os.getenv("DEFAULT_GOOGLE_API_KEY", "")
@@ -49,10 +49,18 @@ MILVUS_PORT = os.getenv("MILVUS_PORT", "19530")
 MILVUS_COLLECTION = os.getenv("MILVUS_COLLECTION", "document_vectors")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 TOP_K = int(os.getenv("TOP_K", "5"))
-EMBED_DEVICE = os.getenv("EMBED_DEVICE", "cuda")
+import threading
+agent_lock = threading.Lock()
+# Agent sẽ được khởi tạo lười (lazy)
+agent: AgenticRAG | None = None
 
-model: SentenceTransformer | None = None
-collection: Collection | None = None
+def get_agent() -> AgenticRAG:
+    global agent
+    with agent_lock:
+        if agent is None:
+            logger.info("Initializing AgenticRAG instance...")
+            agent = AgenticRAG()
+    return agent
 
 # ANTI-CRASH: Limit concurrent inferences to protect GPU VRAM
 # Adjust MAX_CONCURRENT based on your GPU capacity (8GB VRAM ~ 3-5 concurrent)
@@ -60,83 +68,45 @@ MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "3"))
 inference_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
 
-def init_retrieval() -> None:
-    global model, collection
-
-    if model is None:
-        preferred_device = EMBED_DEVICE
-        if preferred_device == "cuda" and not torch.cuda.is_available():
-            logger.warning("CUDA is not available, fallback to CPU for embeddings")
-            preferred_device = "cpu"
-
-        logger.info(f"Loading embedding model: {EMBEDDING_MODEL} on device={preferred_device}")
-        model = SentenceTransformer(EMBEDDING_MODEL, device=preferred_device)
-
-    if collection is None:
-        logger.info(f"Connecting to Milvus at {MILVUS_HOST}:{MILVUS_PORT}")
-        connections.connect("default", host=MILVUS_HOST, port=MILVUS_PORT)
-        collection = Collection(MILVUS_COLLECTION)
-        collection.load()
-        logger.info(f"Milvus collection loaded: {MILVUS_COLLECTION}")
-
-
 def get_context(query: str, k: int = TOP_K) -> tuple[str, list[dict[str, Any]]]:
-    if model is None or collection is None:
-        init_retrieval()
-
-    query_vector = model.encode([query])[0].tolist()
-    search_params = {"metric_type": "L2", "params": {"nprobe": 10}}
-
-    results = collection.search(
-        data=[query_vector],
-        anns_field="vector",
-        param=search_params,
-        limit=k,
-        output_fields=["filename", "text"],
-    )
+    """Sử dụng VectorStore của Agent để tìm kiếm context."""
+    results = get_agent().vector_store.search(query, k=k)
 
     source_chunks: list[dict[str, Any]] = []
     context_parts: list[str] = []
 
-    for hits in results:
-        for hit in hits:
-            filename = hit.entity.get("filename")
-            text = hit.entity.get("text")
-            score = float(hit.distance)
+    for hit in results:
+        filename = hit.get("title") or hit.get("chunk_id", "N/A")
+        text = hit.get("content")
+        score = float(hit.get("initial_score", 0.0))
 
-            if not text:
-                continue
+        if not text:
+            continue
 
-            source_chunks.append(
-                {
-                    "filename": filename,
-                    "score": score,
-                    "text": text,  # Return full text for audit
-                    "preview": text[:300],
-                }
-            )
-            context_parts.append(f"[Source: {filename} | score={score:.4f}]\n{text}")
+        source_chunks.append(
+            {
+                "filename": filename,
+                "score": score,
+                "text": text,
+                "preview": text[:300],
+            }
+        )
+        context_parts.append(f"[Source: {filename} | score={score:.4f}]\n{text}")
 
     context = "\n\n".join(context_parts)
     return context, source_chunks
 
 
 @app.on_event("startup")
-def startup_event() -> None:
-    try:
-        init_retrieval()
-    except Exception as exc:
-        logger.warning(f"Startup retrieval init failed, will retry on first request: {exc}")
+async def startup_event() -> None:
+    logger.info("Nexus AI Engine starting up...")
+    # Khởi tạo lười trong background để không block startup của FastAPI
+    asyncio.create_task(asyncio.to_thread(get_agent))
+    logger.info("Agent initialization started in background.")
 
 
-# Gemini và các logic LLM đã được chuyển vào AgenticRAG
+# --- AGENT INITIALIZED AT MODULE LEVEL ---
 DEFAULT_GOOGLE_API_KEY = os.getenv("DEFAULT_GOOGLE_API_KEY", "")
-# ANTI-CRASH: Limit concurrent inferences to protect GPU VRAM
-# Adjust MAX_CONCURRENT based on your GPU capacity (Blackwell RTX 5000: 10-15 concurrent)
-MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "10"))
-inference_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
-# Khởi tạo Agent một lần duy nhất
-agent = AgenticRAG()
 
 @app.post("/internal/inference")
 async def run_inference(req: InferenceRequest):
@@ -163,7 +133,7 @@ async def run_inference(req: InferenceRequest):
             history_list = [{"role": h.role, "content": h.content} for h in req.history]
 
             # Chạy suy luận Agentic Loop
-            result = await agent.run(
+            result = await get_agent().run(
                 req.query, 
                 api_key=actual_key,
                 model_name=req.google_model,
@@ -219,7 +189,7 @@ async def run_inference_stream(req: InferenceRequest):
                 history_list.append({"role": m.role, "content": m.content})
 
         async def generate():
-            async for chunk in agent.run_stream(
+            async for chunk in get_agent().run_stream(
                 req.query, 
                 api_key=actual_key,
                 model_name=req.google_model,

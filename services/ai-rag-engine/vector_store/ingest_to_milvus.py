@@ -54,6 +54,7 @@ NUM_WORKERS = 12  # Tăng luồng để tận dụng CPU Blackwell mạnh mẽ
 GC_THRESHOLD = 100 # Dọn rác cực kỳ thường xuyên
 
 DATASET_CANDIDATES = [
+    "/home/alida/Documents/Cursor/Bigdata/hf_snapshots/data/content.parquet",
     "datasets/vi-legal/data/content.parquet",
     "/app/datasets/vi-legal/data/content.parquet"
 ]

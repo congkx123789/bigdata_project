@@ -70,12 +70,14 @@ export const api = {
         userId: string = "anonymous",
         provider: string = "google",
         apiKey?: string,
-        googleModel: string = "gemini-3.1-flash-lite-preview"
+        googleModel: string = "gemini-3.1-flash-lite-preview",
+        signal?: AbortSignal
     ): AsyncGenerator<string> {
         const cacheBuster = Date.now();
         const resp = await fetch(`${CORE_API_BASE_URL}/chats/send_stream?t=${cacheBuster}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            signal,
             body: JSON.stringify({
                 message,
                 session_id: sessionId,
