@@ -275,7 +275,7 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
                     # 1. Gán nội dung nguyên văn (Ưu tiên nội dung từ DB)
                     db_title = str(found_res.get("title") or "").strip()
                     c["content"] = found_res.get("content") or "Nội dung đang được cập nhật..."
-                    c["source"] = c.get("source") or db_title or "Văn bản luật"
+                    c["source"] = c.get("source") or db_title or "VBLP Việt Nam"
                     
                     logger.info(f"✅ Matched Citation: ID={c.get('id')}, Source={c['source'][:50]}...")
                     
@@ -291,7 +291,7 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
                     c["content"] = c.get("details") or c.get("summary") or "Nội dung trích dẫn đang được AI tổng hợp từ dữ liệu gốc..."
                 
                 c["id"] = c.get("id") or (idx + 1)
-                c["source"] = c.get("source") or "Tài liệu tham khảo"
+                c["source"] = c.get("source") or "VBLP Việt Nam"
                 final_citations.append(c)
 
         return final_citations

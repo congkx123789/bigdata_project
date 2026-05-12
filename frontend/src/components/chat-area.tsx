@@ -84,7 +84,7 @@ export function ChatArea({ messages }: ChatAreaProps) {
                                 </h1>
                                 <p className="text-zinc-500 dark:text-zinc-400 max-w-sm leading-relaxed font-bold text-[10px] md:text-sm uppercase tracking-[0.1em]">
                                     Hệ thống Tư vấn Pháp luật Cao cấp <br className="hidden md:block" />
-                                    <span className="text-blue-500 dark:text-blue-400 opacity-80 mt-2 block">Cơ sở dữ liệu 1.1 triệu văn bản pháp quy</span>
+                                    <span className="text-blue-500 dark:text-blue-400 opacity-80 mt-2 block">Cơ sở dữ liệu VBLP Việt Nam</span>
                                 </p>
                             </div>
                         </motion.div>
