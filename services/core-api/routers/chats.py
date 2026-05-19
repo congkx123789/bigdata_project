@@ -143,7 +143,21 @@ async def send_message_stream(msg: ChatMessage):
                 
                 # Lưu vào DB sau khi kết thúc stream
                 if full_reply:
-                    save_message(msg.session_id, "assistant", full_reply)
+                    import re
+                    import json
+                    
+                    # Bóc tách trích dẫn JSON từ văn bản
+                    metadata_json = None
+                    citation_match = re.search(r"\[CITATIONS_JSON\]([\s\S]*?)\[/CITATIONS_JSON\]", full_reply)
+                    if citation_match:
+                        metadata_json = citation_match.group(1).strip()
+                        # Làm sạch văn bản (xóa khối JSON rác trước khi lưu content)
+                        clean_content = re.sub(r"\[CITATIONS_JSON\][\s\S]*?\[/CITATIONS_JSON\]", "", full_reply).strip()
+                    else:
+                        clean_content = full_reply
+                    
+                    # Lưu kèm metadata vào DB
+                    save_message(msg.session_id, "assistant", clean_content, metadata=metadata_json)
 
     return StreamingResponse(
         stream_generator(), 

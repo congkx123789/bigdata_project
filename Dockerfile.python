@@ -1,47 +1,31 @@
-# Dockerfile cho Bigdata Legal AI Engine & API
-FROM nvidia/cuda:12.8.0-runtime-ubuntu22.04
 
-# Cài đặt Python và các thư viện hệ thống
+# Dockerfile cho Toàn bộ Hệ thống Bigdata Legal AI (AI Engine, Core API, Spark Worker)
+FROM pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# 1. Cài đặt Java & Các công cụ cần thiết cho Spark
 RUN apt-get update && apt-get install -y \
-    python3-pip \
-    python3-dev \
+    openjdk-17-jdk \
     git \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy file định nghĩa thư viện (nếu có) hoặc cài trực tiếp
-# Ở đây tôi sẽ cài các thư viện cốt lõi bạn đang dùng
-RUN pip3 install --no-cache-dir \
-    fastapi \
-    uvicorn \
-    pymilvus \
-    sentence-transformers \
-    torch \
-    openai \
-    httpx \
-    requests \
-    python-multipart \
-    pydantic \
-    pyarrow \
-    google-generativeai \
-    beautifulsoup4 \
-    pandas \
-    FlagEmbedding \
-    einops \
-    accelerate
+# 2. Cài đặt các thư viện AI & Big Data
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir fastapi uvicorn pymilvus sentence-transformers transformers==4.40.0 kafka-python pyspark==3.5.1
+RUN pip install --no-cache-dir openai httpx requests python-multipart pydantic pyarrow google-generativeai beautifulsoup4 pandas einops accelerate
 
-# Thiết lập biến môi trường
+# 3. Thiết lập biến môi trường
 ENV PYTHONPATH=/app
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV PATH=$PATH:$JAVA_HOME/bin
 ENV TRANSFORMERS_OFFLINE=1
 ENV HF_DATASETS_OFFLINE=1
 
-# Copy mã nguồn
 COPY . /app
-
-# Cổng mặc định
 EXPOSE 8001 8002
-
-# Lệnh khởi chạy sẽ được định nghĩa trong docker-compose
 CMD ["python3", "services/core-api/main.py"]

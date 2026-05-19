@@ -1,0 +1,35 @@
+
+# Dockerfile dành riêng cho Spark Streaming Worker
+FROM pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime
+
+USER root
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 1. Cài đặt Java & Các công cụ cần thiết cho Spark
+RUN apt-get update && apt-get install -y \
+    openjdk-17-jdk \
+    git \
+    curl \
+    tar \
+    xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. Cài đặt Spark (Manual installation)
+ENV SPARK_VERSION=3.5.0
+ENV HADOOP_VERSION=3
+RUN curl -o spark.tgz https://archive.apache.org/dist/spark/spark-$SPARK_VERSION/spark-$SPARK_VERSION-bin-hadoop$HADOOP_VERSION.tgz && \
+    mkdir -p /opt/spark && \
+    tar -xzf spark.tgz -C /opt/spark --strip-components=1 && \
+    rm spark.tgz
+
+ENV SPARK_HOME=/opt/spark
+ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+
+# 3. Cài đặt các thư viện Python
+RUN pip install --no-cache-dir pymilvus sentence-transformers kafka-python pyspark==$SPARK_VERSION
+
+WORKDIR /app
+
+COPY . /app
+CMD ["python3", "services/spark-worker/streaming_ingest.py"]

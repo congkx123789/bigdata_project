@@ -85,7 +85,7 @@ export default function Home() {
       api.getChatMessages(sessionId).then(msgs => {
         if (msgs && msgs.length > 0) {
           const formatted = msgs.map((m, i) => {
-            let citations = m.citations;
+            let citations = m.citations || (m.metadata ? JSON.parse(m.metadata) : null);
             if (m.role === "assistant" && (!citations || citations.length === 0)) {
               try {
                 // Regex mở rộng để bắt cả JSON trong ```json ... ``` hoặc [CITATIONS_JSON]...

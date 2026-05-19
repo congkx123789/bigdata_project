@@ -32,28 +32,33 @@ Hệ thống RAG (Retrieval-Augmented Generation) tra cứu pháp luật Việt 
 
 ```mermaid
 graph TD
-    subgraph "1. NẠP LIỆU (INGESTION)"
-        A[content.parquet] -->|Read Pandas| B[ingest_to_milvus.py]
-        B -->|Producer Threads| C[LegalParser.py]
-        C -->|Clean & Tree Chunking| D[Hierarchical Text Chunks]
-        D -->|Consumer GPU| E[BGE-M3 Embedding]
-        E -->|BF16 + FlashAttention| F[Milvus: vi_legal_rag]
+    subgraph "1. LUỒNG NẠP LIỆU BIG DATA (INGESTION)"
+        A[Dữ liệu Pháp luật] -->|Push| B[Kafka: legal_documents]
+        B -->|Stream| C[Spark Streaming]
+        C -->|GPU Accelerated| D[BGE-M3 Embedding]
+        D -->|BF16 Optimization| E[Milvus: vi_legal_rag]
     end
 
-    subgraph "2. TRUY VẤN (INFERENCE)"
-        User((Người dùng)) -->|Hỏi| G[Frontend: Next.js]
-        G -->|API Call| H[Core API: routers/chats.py]
-        H -->|RAG Request| I[AI Engine: main.py]
-        I -->|Agent Logic| J[agentic_rag/agent.py]
-        J -->|Search| F
-        F -->|Top K Context| J
-        J -->|Prompt + Context| K[Gemini 3 Flash]
-        K -->|Trả lời| G
+    subgraph "2. LUỒNG TRUY VẤN AGENTIC (INFERENCE)"
+        User((Người dùng)) -->|Hỏi| F[Frontend: Next.js]
+        F -->|API Call| G[Core API]
+        G -->|Request| H[AI Engine Agent]
+        
+        %% Vòng lặp Agentic
+        H -->|Bước 1: Phân tích| I{AI tự tư duy: <br/>Cần tìm luật?}
+        I -->|Cần| J[Truy vấn Milvus]
+        J -->|Kết quả luật| H
+        I -->|Đã đủ| K[Tổng hợp câu trả lời]
+        
+        K -->|Final Answer| L[Gemini 2.0 Flash]
+        L -->|Trả lời kèm trích dẫn| G
+        G -->|Stream Response| F
     end
 
-    style F fill:#f96,stroke:#333,stroke-width:2px
-    style E fill:#bfb,stroke:#333
-    style K fill:#bbf,stroke:#333
+    style E fill:#f96,stroke:#333,stroke-width:2px
+    style D fill:#bfb,stroke:#333
+    style L fill:#bbf,stroke:#333
+    style H fill:#dfd,stroke:#333
 ```
 
 ---

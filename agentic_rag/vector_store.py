@@ -18,14 +18,27 @@ class VectorStore:
         port = port or os.getenv("MILVUS_PORT", "19530")
         collection_name = collection_name or os.getenv("MILVUS_COLLECTION", "vi_legal_rag")
         
-        # 1. Khởi tạo BGE Embedding Model trên GPU
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        # 1. Khởi tạo BGE Embedding Model
+        self.device = "cpu"
+        if torch.cuda.is_available():
+            try:
+                # Thử nghiệm thực tế xem GPU có tương thích với driver/pytorch hiện tại không
+                test_tensor = torch.zeros(1).to("cuda")
+                self.device = "cuda"
+            except Exception as e:
+                logger.warning(f"CUDA is available but unusable (likely sm compatibility issue): {e}. Falling back to CPU.")
+                self.device = "cpu"
+
         embedding_model_name = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
         logger.info(f"Loading Embedding Model ({embedding_model_name}) on {self.device}...")
         self.model = SentenceTransformer(embedding_model_name, device=self.device)
+        
         if self.device == "cuda":
-            self.model = self.model.to(torch.bfloat16)
-            logger.info("VectorStore Model optimized with bfloat16")
+            try:
+                self.model = self.model.to(torch.bfloat16)
+                logger.info("VectorStore Model optimized with bfloat16")
+            except Exception as e:
+                logger.warning(f"Failed to move model to bfloat16: {e}. Keeping default precision.")
         
         # 2. Khởi tạo BGE Reranker Model trên GPU
         reranker_model_name = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
@@ -100,22 +113,21 @@ class VectorStore:
         if not candidates:
             return []
 
-        # --- PHASE 2: RERANKING (TEMPORARILY DISABLED) ---
+        # --- PHASE 2: RERANKING ---
         candidate_list = list(candidates.values())
-        # Prepare pairs for reranker: [[query, doc1], [query, doc2], ...]
-        # pairs = [[query_text, c['content']] for c in candidate_list]
-        
-        # Compute reranking scores
-        # rerank_scores = self.reranker.compute_score(pairs)
-        
-        # Add rerank scores to candidates
-        # for i, score in enumerate(rerank_scores):
-        #     candidate_list[i]['rerank_score'] = score
-
-        # Sort by initial score for now
-        sorted_candidates = sorted(candidate_list, key=lambda x: x['initial_score'])
-        
-        logger.info(f"Retrieved {len(candidate_list)} candidates for query: '{query_text[:50]}...'")
+        if not candidate_list: return []
+        pairs = [[query_text, c['content'][:1000]] for c in candidate_list]
+        try:
+            import torch
+            with torch.no_grad():
+                rerank_scores = self.reranker.compute_score(pairs)
+            for i, score in enumerate(rerank_scores):
+                candidate_list[i]['rerank_score'] = score
+            sorted_candidates = sorted(candidate_list, key=lambda x: x.get('rerank_score', -99), reverse=True)
+            logger.info(f"Reranked {len(candidate_list)} candidates using GPU.")
+        except Exception as e:
+            logger.error(f"Reranking failed: {e}")
+            sorted_candidates = sorted(candidate_list, key=lambda x: x['initial_score'])
         return sorted_candidates[:k]
 
     def get_context(self, chunk_id: str, window: int = 2):

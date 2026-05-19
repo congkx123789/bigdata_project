@@ -30,7 +30,7 @@ services:
     restart: unless-stopped
 
   milvus-standalone:
-    image: milvusdb/milvus:v2.3.15
+    image: milvusdb/milvus:v2.4.4
     container_name: bd_legal_milvus
     command: [ "milvus", "run", "standalone" ]
     environment:
@@ -48,6 +48,116 @@ services:
     ports:
       - "19530:19530"
       - "9091:9091"
+    networks:
+      - bigdata_internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # --- BIG DATA LAYER (Kafka & Spark) ---
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: bd_legal_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - bigdata_internal
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: bd_legal_kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: bd_legal_zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://bd_legal_kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "29092:29092"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      - zookeeper
+    networks:
+      - bigdata_internal
+    restart: unless-stopped
+
+  kafdrop:
+    image: obsidiandynamics/kafdrop:latest
+    container_name: bd_legal_kafdrop
+    ports:
+      - "9002:9000"
+    environment:
+      KAFKA_BROKERCONNECT: bd_legal_kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - bigdata_internal
+    restart: unless-stopped
+
+  spark-master:
+    image: apache/spark:3.5.1
+    container_name: bd-legal-spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "8081:8080"
+      - "7077:7077"
+    networks:
+      - bigdata_internal
+    restart: unless-stopped
+
+  spark-worker:
+    image: apache/spark:3.5.1
+    container_name: bd-legal-spark-worker
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://bd-legal-spark-master:7077
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2g
+    networks:
+      - bigdata_internal
+    restart: unless-stopped
+
+  spark-streaming-ingest:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: bd-legal-spark-ingest
+    command: python3 services/spark-worker/streaming_ingest.py
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=bd_legal_kafka:9092
+      - KAFKA_TOPIC=legal_documents
+      - MILVUS_HOST=bd_legal_milvus
+      - MILVUS_PORT=19530
+      - SPARK_MASTER=spark://bd-legal-spark-master:7077
+    volumes:
+      - .:/app
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    depends_on:
+      kafka:
+        condition: service_healthy
+      milvus-standalone:
+        condition: service_healthy
+      spark-master:
+        condition: service_started
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     networks:
       - bigdata_internal
     restart: unless-stopped
@@ -76,6 +186,7 @@ services:
     environment:
       - MILVUS_HOST=milvus-standalone
       - MILVUS_PORT=19530
+      - MILVUS_COLLECTION=vi_legal_rag
       - TRANSFORMERS_OFFLINE=1
       - OLLAMA_URL=http://heritage_ollama:11434
       - OLLAMA_MODEL=legal-rag-finetuned
@@ -83,6 +194,7 @@ services:
       - GEMINI_API_URL=${GEMINI_API_URL}
       - GOOGLE_MODEL=gemini-2.0-flash
       - MAX_CONCURRENT=20
+      - TOP_K=10
     volumes:
       - .:/app
       - ~/.cache/huggingface:/root/.cache/huggingface
@@ -94,8 +206,10 @@ services:
               count: 1
               capabilities: [gpu]
     depends_on:
-      - milvus-standalone
-      - google-mock
+      milvus-standalone:
+        condition: service_healthy
+      google-mock:
+        condition: service_started
     networks:
       - bigdata_internal
       - heritage_network

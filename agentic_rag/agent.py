@@ -25,7 +25,7 @@ class AgenticRAG:
         
         self.system_prompt = """
 <SYSTEM_ROLE>
-Bạn là **Nexus Legal AI**, một Trợ lý Luật sư cao cấp. Phong cách của bạn là **Súc tích, trực diện, chuyên nghiệp**. Bạn trả lời vừa đủ theo yêu cầu của người dùng, không rườm rà và đi thẳng vào căn cứ pháp lý.
+Bạn là **Nexus Legal AI**, một Chuyên gia Pháp lý cao cấp với tư duy hệ thống. Phong cách của bạn là **Toàn diện, Sâu sắc và Chặt chẽ**. Bạn không chỉ trả lời trực diện câu hỏi mà còn biết cách **phân tích các khía cạnh liên quan** (như: mức xử phạt, trình tự thủ tục, quyền và nghĩa vụ, hoặc các văn bản hướng dẫn thi hành) để đưa ra cái nhìn tổng thể nhất cho người dùng.
 </SYSTEM_ROLE>
 
 <SECURITY_GUARDRAILS>
@@ -43,21 +43,25 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
 </DATA_STRUCTURE_INSIGHT>
 
 <STRICT_GROUNDING>
-1. **CHỈ NÓI CÓ SÁCH**: Bạn chỉ được phép trả lời dựa trên 100% dữ liệu có trong <CURRENT_SEARCH_DATA> hoặc <AI_PREVIOUS_KNOWLEDGE>.
-2. **CẤM SUY LUẬN**: Tuyệt đối không tự suy luận, không dùng kiến thức cá nhân bên ngoài để bổ sung vào điều luật.
-3. **TỪ CHỐI TỨC THÌ**: Nếu kết quả tra cứu không liên quan đến câu hỏi hoặc không tìm thấy điều luật phù hợp, hãy trả lời ngay: "Rất tiếc, câu hỏi của bạn nằm ngoài phạm vi dữ liệu pháp luật hiện có trong hệ thống của tôi. Tôi không thể cung cấp câu trả lời chính xác cho vấn đề này."
+1. **CHỈ NÓI CÓ SÁCH**: Bạn chỉ được phép trả lời dựa trên **100% dữ liệu** có trong <SEARCH_RESULTS>. Tuyệt đối không sử dụng kiến thức bên ngoài về các văn bản pháp luật không có trong kết quả tra cứu.
+2. **KHÔNG BỊA TRÍCH DẪN**: Nếu không tìm thấy văn bản liên quan trong <SEARCH_RESULTS>, bạn phải trả lời: "Tôi không tìm thấy dữ liệu này trong kho văn bản của bạn." Tuyệt đối không tự tạo ra các trích dẫn giả định.
+3. **TRUNG THỰC**: Sự tin tưởng của người dùng là trên hết. Thà nói không biết còn hơn đưa ra thông tin không có căn cứ từ Database.
 </STRICT_GROUNDING>
 
 <CONSULTATION_RULES>
-1. **DỮ LIỆU THỰC TẾ**: Chỉ trích dẫn những gì CÓ TRONG kết quả tra cứu. KHÔNG tự bịa ra điều luật. Nếu không thấy, phải từ chối ngay.
-2. **TRÍCH DẪN ĐA TẦNG**: Phải nêu rõ lộ trình: **[Tên văn bản] > [Chương/Mục] > [Điều luật]**. 
-3. **ĐỊNH DẠNG JSON TRÍCH DẪN**: Cuối câu trả lời phải có khối JSON citations.
-4. **KHÔNG TRẢ LỜI NGẮN GỌN**: Phân tích kỹ nhưng phải dựa trên căn cứ luật định.
+1. **PHÂN TÍCH ĐA CHIỀU**: Khi người dùng hỏi một vấn đề, hãy nghĩ đến:
+   - Căn cứ luật chính (Luật/Bộ luật).
+   - Các văn bản hướng dẫn chi tiết (Nghị định/Thông tư).
+   - Chế tài xử phạt hoặc hậu quả pháp lý liên quan.
+2. **TRÍCH DẪN ĐA TẦNG**: Phải nêu rõ lộ trình: **[Tên văn bản] > [Điều/Khoản]**. 
+3. **TỐI ĐA HÓA TRÍCH DẪN**: Cố gắng trích dẫn **3-5 căn cứ** để đảm bảo tính khách quan và đầy đủ.
+4. **ĐỊNH DẠNG JSON TRÍCH DẪN**: Cuối câu trả lời phải có khối JSON citations.
 </CONSULTATION_RULES>
 
 <AGENTIC_WORKFLOW>
-- Cần tra cứu thêm: Trả về <call_search>từ khóa</call_search>
-- Đã đủ dữ liệu: Trả về <final_answer>nội dung tư vấn chuyên sâu</final_answer> sau đó mới đến Khối JSON trích dẫn. **TUYỆT ĐỐI KHÔNG ĐỂ JSON TRONG THẺ FINAL_ANSWER**.
+- **Bước 1: Phân tích khía cạnh**: Trước khi tra cứu, hãy xác định các từ khóa bao gồm cả khía cạnh trực tiếp và gián tiếp (Ví dụ: "uống rượu" -> tra cả "nồng độ cồn" và "mức xử phạt giao thông").
+- **Bước 2: Tra cứu**: Sử dụng `<call_search>từ khóa tổng hợp</call_search>`.
+- **Bước 3: Tổng hợp**: Trả về `<final_answer>nội dung tư vấn chuyên sâu, phân tích rõ từng khía cạnh</final_answer>`.
 </AGENTIC_WORKFLOW>
 """
         self.chat_history = [{"role": "system", "content": self.system_prompt}]
@@ -240,59 +244,65 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
             
             # 2. Thử khớp theo Source/Title/Hierarchy (Fuzzy Match mạnh hơn)
             if not found_res and (c.get("source") or c.get("hierarchy")):
-                search_term = str(c.get("source") or c.get("hierarchy") or "").lower()
-                # Tìm số điều (ví dụ: "Điều 11")
+                # Kết hợp cả source và hierarchy để tìm kiếm
+                search_term = f"{c.get('source', '')} {c.get('hierarchy', '')}".lower()
+                # Tìm số điều (ví dụ: "Điều 5") - Hỗ trợ cả "Điều 05", "Điều 5", "điều 5"
                 article_match = re.search(r"điều\s+(\d+)", search_term)
                 
                 for r in results:
                     r_title = str(r.get("title") or "").lower()
-                    r_hierarchy = str(r.get("hierarchy") or "").lower()
                     r_content = str(r.get("content") or "").lower()
                     
-                    # Ưu tiên 1: Khớp chính xác số điều
-                    if article_match and f"điều {article_match.group(1)}" in (r_hierarchy + r_title + r_content[:200]):
-                        found_res = r
-                        break
-                    
-                    # Ưu tiên 2: Khớp từ khóa trong tiêu đề hoặc cây phân cấp
-                    if search_term in r_title or r_title in search_term or search_term in r_hierarchy:
-                        found_res = r
-                        break
-                    
-                    # Ưu tiên 3: Khớp các từ khóa quan trọng
-                    important_words = [w for w in search_term.split() if len(w) > 4]
-                    if any(word in r_title or word in r_hierarchy for word in important_words):
-                        found_res = r
-                        break
+                    # Ưu tiên 1: Khớp chính xác số văn bản (ví dụ: 100/2019/NĐ-CP)
+                    doc_no_match = re.search(r"(\d+/\d+/[A-ZĐ-]+)", search_term)
+                    if doc_no_match:
+                        doc_no = doc_no_match.group(1).lower()
+                        if doc_no in r_title or doc_no in r_content[:1000]:
+                            # Nếu khớp số hiệu, tiếp tục kiểm tra số Điều
+                            if article_match:
+                                article_no = article_match.group(1)
+                                if re.search(rf"điều\s+0?{article_no}\b", r_content[:1000]):
+                                    found_res = r
+                                    break
+                            else:
+                                found_res = r # Khớp số hiệu là tốt rồi
+                                break
+
+                    # Ưu tiên 2: Khớp chính xác số điều trong nội dung hoặc tiêu đề
+                    if article_match:
+                        article_no = article_match.group(1)
+                        target_pattern = rf"điều\s+0?{article_no}\b"
+                        if re.search(target_pattern, r_title) or re.search(target_pattern, r_content[:500]):
+                            found_res = r
+                            break
             
             # 3. Nếu vẫn không thấy, lấy kết quả đầu tiên làm fallback (Để không bao giờ trống nội dung)
             if not found_res and results:
                 found_res = results[0]
 
             if found_res:
-                cid = found_res.get('chunk_id') or "unknown"
-                if cid not in seen_ids:
-                    # 1. Gán nội dung nguyên văn (Ưu tiên nội dung từ DB)
-                    db_title = str(found_res.get("title") or "").strip()
-                    c["content"] = found_res.get("content") or "Nội dung đang được cập nhật..."
-                    c["source"] = c.get("source") or db_title or "VBLP Việt Nam"
-                    
-                    logger.info(f"✅ Matched Citation: ID={c.get('id')}, Source={c['source'][:50]}...")
-                    
-                    # Rút gọn ID để không bị tràn form
-                    raw_id = str(c.get("id") or idx or cid.split("_")[-1])
-                    c["id"] = raw_id[-3:] if len(raw_id) > 3 else raw_id
-                    
-                    final_citations.append(c)
-                    seen_ids.add(cid)
-            else:
-                # TRƯỜNG HỢP KHÔNG KHỚP: Vẫn giữ lại để người dùng thấy nguồn AI trích dẫn
-                if not c.get("content"):
-                    c["content"] = c.get("details") or c.get("summary") or "Nội dung trích dẫn đang được AI tổng hợp từ dữ liệu gốc..."
+                # TRẢ VỀ NGUYÊN VĂN NỘI DUNG GỐC (BẮT BUỘC)
+                raw_content = found_res.get("content") or found_res.get("text") or "Không có nội dung gốc."
+                c["content"] = raw_content
                 
-                c["id"] = c.get("id") or (idx + 1)
-                c["source"] = c.get("source") or "VBLP Việt Nam"
+                # Làm sạch Tiêu đề và Nguồn
+                db_title = str(found_res.get("title") or "").strip()
+                if " > " in db_title:
+                    c["source"] = db_title.split(" > ")[0]
+                else:
+                    c["source"] = db_title or c.get("source") or "Văn bản pháp luật"
+                
+                # Lấy Hierarchy chuẩn
+                if not c.get("hierarchy") or "chưa xác định" in c.get("hierarchy", "").lower():
+                    h_match = re.search(r"(Điều \d+([,.] Khoản \d+)?)", raw_content[:200])
+                    c["hierarchy"] = h_match.group(1) if h_match else db_title
+                
+                logger.info(f"✅ Verified Citation matched with Milvus: {c['source'][:50]}")
                 final_citations.append(c)
+            else:
+                # KHÔNG KHỚP TRONG MILVUS -> XÓA BỎ HOÀN TOÀN TRÍCH DẪN GIẢ
+                logger.warning(f"⚠️ Discarding fake citation (not in Milvus): {c.get('source')}")
+                continue # Bỏ qua trích dẫn này, không cho hiện lên UI
 
         return final_citations
 
@@ -365,8 +375,14 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
             
             # PHÒNG THỦ: Đảm bảo resp_t1 không bao giờ rỗng
             if not resp_t1:
-                logger.warning("⚠️ Step 1 returned None. Falling back to empty response.")
-                resp_t1 = ""
+                logger.warning("⚠️ Step 1 returned None due to API Error. Checking for auto-search fallback...")
+                # Nếu câu hỏi có mùi pháp lý, ép tra cứu luôn không cần hỏi AI
+                legal_keywords = ["điều", "luật", "nghị định", "thông tư", "quy định", "đất đai", "hình sự", "dân sự"]
+                if any(kw in user_query.lower() for kw in legal_keywords):
+                    resp_t1 = f"<call_search>{user_query}</call_search>"
+                    logger.info("🚀 Auto-search triggered due to legal keywords and API failure.")
+                else:
+                    resp_t1 = ""
 
             # Kiểm tra xem AI có muốn tra cứu không
             if "<call_search>" in resp_t1:
@@ -375,7 +391,7 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
                 if search_match:
                     query_to_search = search_match.group(1).strip()
                     yield f"[STATUS]📡 **Kết nối dữ liệu**: Đang truy xuất căn cứ pháp luật cho: \"{query_to_search}\"...[/STATUS]\n"
-                    search_results = self.vector_store.search(query_to_search, k=6)
+                    search_results = self.vector_store.search(query_to_search, k=15)
                     yield f"[STATUS]📚 **Trích xuất kiến thức**: Đã tìm thấy {len(search_results)} văn bản luật liên quan...[/STATUS]\n"
                     obs_content = "KẾT QUẢ TRA CỨU:\n" + "\n".join([f"- {r['content']}" for r in search_results])
                     observations.append(obs_content)
@@ -400,15 +416,16 @@ Hãy sử dụng thông tin này để trích dẫn "Đa tầng" (Gốc -> Cành
 
         finally:
             # LUÔN LUÔN TRẢ VỀ TRÍCH DẪN (DÙ CÓ LỖI HAY KHÔNG)
+            # Sử dụng biến search_results đã khởi tạo ở đầu hàm
             parsed = self._parse_fallback_content(full_final_response)
-            # Lấy search_results từ biến local nếu AI có tra cứu
-            active_search_results = search_results if 'search_results' in locals() else []
             
             raw_citations = parsed["citations"] if parsed["citations"] else self._get_final_citations(observations)
-            final_citations = self._force_verbatim_content_direct(raw_citations, active_search_results)
+            final_citations = self._force_verbatim_content_direct(raw_citations, search_results)
             
             import json
-            yield f"\n\n[CITATIONS_JSON]{json.dumps(final_citations, ensure_ascii=False)}[/CITATIONS_JSON]"
+            citation_json = json.dumps(final_citations, ensure_ascii=False)
+            logger.info(f"📤 [FINALLY] Yielding {len(final_citations)} citations to Frontend.")
+            yield f"\n\n[CITATIONS_JSON]{citation_json}[/CITATIONS_JSON]"
             
             logger.info(f"✨ [PROCESS DONE] Total time: {time.time() - start_total:.2f}s")
 
