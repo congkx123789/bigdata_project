@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/:path*",
-        destination: "http://bd_legal_core_api:8001/api/:path*",
+        destination: "http://core-api:8001/api/:path*",
       },
     ];
   },

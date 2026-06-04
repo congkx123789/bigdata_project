@@ -83,11 +83,11 @@ export function ChatInput({ onSend, onStop, isGenerating, forwardedInput }: Chat
     }, [input]);
 
     return (
-        <div className="relative max-w-4xl mx-auto w-full px-4 md:px-8 pb-4 pt-2">
+        <div className="relative max-w-4xl mx-auto w-full px-4 md:px-8 pb-8 pt-2">
             <div
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleDrop}
-                className="relative rounded-2xl border border-zinc-200/50 dark:border-zinc-800/50 bg-zinc-900 shadow-2xl overflow-hidden focus-within:ring-1 focus-within:ring-zinc-600 transition-all backdrop-blur-xl"
+                className="relative rounded-2xl border bg-white dark:bg-zinc-950 shadow-lg overflow-hidden focus-within:ring-1 focus-within:ring-zinc-400 dark:focus-within:ring-zinc-700 transition-all"
             >
 
                 {/* Upload Status / Files */}
@@ -97,13 +97,13 @@ export function ChatInput({ onSend, onStop, isGenerating, forwardedInput }: Chat
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: "auto", opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
-                            className="flex flex-wrap gap-2 p-3 bg-zinc-800/50 border-b border-zinc-700/50"
+                            className="flex flex-wrap gap-2 p-3 bg-zinc-50 dark:bg-zinc-900/50 border-b"
                         >
                             {files.map((file, i) => (
-                                <div key={i} className="relative group flex items-center gap-2 p-2 rounded-lg bg-zinc-800 border border-zinc-700 text-xs text-zinc-200">
+                                <div key={i} className="relative group flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-zinc-800 border text-xs">
                                     {file.type.startsWith("image/") ? <ImageIcon className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
                                     <span className="max-w-[100px] truncate">{file.name}</span>
-                                    <button onClick={() => removeFile(i)} className="text-zinc-500 hover:text-red-400">
+                                    <button onClick={() => removeFile(i)} className="text-zinc-400 hover:text-red-500">
                                         <X className="h-3 w-3" />
                                     </button>
                                 </div>
@@ -113,21 +113,51 @@ export function ChatInput({ onSend, onStop, isGenerating, forwardedInput }: Chat
                 </AnimatePresence>
 
                 {isUploading && (
-                    <div className="px-4 py-2 border-b border-zinc-700/50 bg-zinc-800/50">
-                        <div className="flex items-center justify-between text-[10px] text-zinc-400 mb-1">
+                    <div className="px-4 py-2 border-b bg-zinc-50 dark:bg-zinc-900/50">
+                        <div className="flex items-center justify-between text-[10px] text-zinc-500 mb-1">
                             <span>Đang phân tích layout...</span>
                             <span>{uploadProgress}%</span>
                         </div>
-                        <Progress value={uploadProgress} className="h-1 bg-zinc-700" />
+                        <Progress value={uploadProgress} className="h-1" />
                     </div>
                 )}
 
                 {/* Input Form */}
-                <div className="flex flex-col p-2 sm:p-3">
+                <div className="flex items-end gap-2 p-3">
+                    <div className="flex-shrink-0 mb-1">
+                        <input
+                            type="file"
+                            id="file-upload"
+                            className="hidden"
+                            multiple
+                            onChange={handleFileChange}
+                        />
+                        <label htmlFor="file-upload">
+                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-zinc-500">
+                                <Paperclip className="h-5 w-5" />
+                            </Button>
+                        </label>
+                    </div>
+
+                    <div className="flex-shrink-0 mb-1">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setIsRetrieveOnly(!isRetrieveOnly)}
+                            className={cn(
+                                "h-9 w-9 rounded-full transition-colors",
+                                isRetrieveOnly ? "text-blue-500 bg-blue-50 dark:bg-blue-900/20" : "text-zinc-500"
+                            )}
+                            title={isRetrieveOnly ? "Chế độ tìm trích dẫn (BGE Only)" : "Chế độ Chat (Full RAG)"}
+                        >
+                            <Search className="h-5 w-5" />
+                        </Button>
+                    </div>
+
                     <textarea
                         ref={textareaRef}
-                        placeholder="Hỏi tài liệu..."
-                        className="w-full min-h-[44px] max-h-[200px] bg-transparent border-none focus:ring-0 resize-none text-base text-zinc-100 placeholder:text-zinc-500 scrollbar-none px-2 py-2"
+                        placeholder="Hỏi bất cứ điều gì về tài liệu của bạn..."
+                        className="flex-1 min-h-[44px] max-h-[200px] py-3 bg-transparent border-none focus:ring-0 resize-none text-sm md:text-base scrollbar-none"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => {
@@ -138,59 +168,31 @@ export function ChatInput({ onSend, onStop, isGenerating, forwardedInput }: Chat
                         }}
                     />
 
-                    {/* Action Bar Below Textarea */}
-                    <div className="flex items-center justify-between mt-1 px-1">
-                        <div className="flex items-center gap-1 sm:gap-2">
-                            <input
-                                type="file"
-                                id="file-upload"
-                                className="hidden"
-                                multiple
-                                onChange={handleFileChange}
-                            />
-                            <label htmlFor="file-upload">
-                                <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9 rounded-full text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800">
-                                    <Paperclip className="h-4 w-4 sm:h-5 sm:w-5" />
-                                </Button>
-                            </label>
-
+                    <div className="flex-shrink-0 mb-1">
+                        {isGenerating ? (
                             <Button
-                                variant="ghost"
                                 size="icon"
-                                onClick={() => setIsRetrieveOnly(!isRetrieveOnly)}
-                                className={cn(
-                                    "h-8 w-8 sm:h-9 sm:w-9 rounded-full transition-colors",
-                                    isRetrieveOnly ? "text-blue-400 bg-blue-900/30" : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
-                                )}
-                                title={isRetrieveOnly ? "Chế độ tìm trích dẫn (BGE Only)" : "Chế độ Chat (Full RAG)"}
+                                onClick={onStop}
+                                className="h-9 w-9 rounded-xl bg-zinc-900 dark:bg-zinc-100 hover:bg-zinc-800 dark:hover:bg-zinc-200"
                             >
-                                <Search className="h-4 w-4 sm:h-5 sm:w-5" />
+                                <Square className="h-4 w-4 fill-current" />
                             </Button>
-                        </div>
-
-                        <div>
-                            {isGenerating ? (
-                                <Button
-                                    size="icon"
-                                    onClick={onStop}
-                                    className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-zinc-100 text-zinc-900 hover:bg-white"
-                                >
-                                    <Square className="h-3 w-3 sm:h-4 sm:w-4 fill-current" />
-                                </Button>
-                            ) : (
-                                <Button
-                                    size="icon"
-                                    onClick={handleSend}
-                                    disabled={!input.trim() && files.length === 0}
-                                    className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-zinc-100 text-zinc-900 hover:bg-white disabled:bg-zinc-800 disabled:text-zinc-600"
-                                >
-                                    <Send className="h-3 w-3 sm:h-4 sm:w-4" />
-                                </Button>
-                            )}
-                        </div>
+                        ) : (
+                            <Button
+                                size="icon"
+                                onClick={handleSend}
+                                disabled={!input.trim() && files.length === 0}
+                                className="h-9 w-9 rounded-xl bg-zinc-900 dark:bg-zinc-100 hover:bg-zinc-800 dark:hover:bg-zinc-200"
+                            >
+                                <Send className="h-4 w-4" />
+                            </Button>
+                        )}
                     </div>
                 </div>
             </div>
+            <p className="mt-3 text-[10px] text-zinc-400 text-center uppercase tracking-widest font-medium">
+                AI Document Search & Chatbot v1.0
+            </p>
         </div>
     );
 }

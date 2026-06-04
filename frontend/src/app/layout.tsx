@@ -14,9 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Nexus AI | Hệ thống Tư vấn Pháp luật Cao cấp",
-  description: "Trợ lý ảo RAG thông minh cho lĩnh vực Pháp luật Việt Nam",
-  viewport: "width=device-width, initial-scale=1, shrink-to-fit=no",
+  title: "AI Document Chatbot",
+  description: "Advanced RAG Search & Chat Interface",
 };
 
 export default function RootLayout({
@@ -25,11 +24,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className="h-full">
-      <body className={`${geistSans.variable} ${geistMono.variable} h-full overflow-hidden bg-background font-sans antialiased selection:bg-blue-500/30`}>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background font-sans antialiased`}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="dark"
+          defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >
