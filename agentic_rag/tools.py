@@ -37,9 +37,9 @@ TOOLS = [
                             "type": "object",
                             "properties": {
                                 "chunk_id": {"type": "string"},
-                                "legal_analysis": {"type": "string", "description": "Phân tích pháp lý chuyên sâu về đoạn trích này: Giải thích tại sao đoạn này lại liên quan đến câu hỏi của người dùng, các quy định cụ thể trong này áp dụng thế nào cho trường hợp của họ. Phải viết dài và chi tiết (ít nhất 3-5 câu)."},
+                                "legal_analysis": {"type": "string", "description": "Tóm tắt ngắn gọn kết luận pháp lý rút ra từ đoạn trích này (1-2 câu)."},
                                 "content": {"type": "string", "description": "Nguyên văn đoạn văn bản trích dẫn từ database."},
-                                "source": {"type": "string", "description": "Tên văn bản hoặc nguồn của đoạn trích dẫn (ví dụ: 'Điều 202 Bộ luật Hình sự 2015')."}
+                                "source": {"type": "string", "description": "Tên văn bản hoặc nguồn của đoạn trích dẫn."}
                             }
                         },
                         "description": "Danh sách các đoạn trích dẫn nguyên văn dùng để trả lời."
