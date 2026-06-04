@@ -6,36 +6,31 @@ import os
 
 import httpx
 from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-
-from database import get_session_history, save_message, get_user_sessions, create_session, update_session_title
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 
 AI_ENGINE_URL = os.getenv("AI_ENGINE_URL", "http://localhost:8002")
-MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "50"))
+MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "12"))
+
+# In-memory conversation store: {session_id: deque([{role, content}, ...])}
+# NOTE: đủ tốt cho local/dev. Có thể thay bằng Redis/Postgres sau.
+SESSION_MESSAGES: dict[str, deque[dict[str, str]]] = defaultdict(
+    lambda: deque(maxlen=MAX_HISTORY_TURNS * 2)
+)
+
 
 class ChatMessage(BaseModel):
     message: str
     session_id: str = "default"
-    user_id: str = "anonymous"
-    provider: str = "google"
+    provider: str = "local"
     api_key: str | None = None
-    google_model: str = "gemini-2.0-flash"
     retrieve_only: bool = False
-
-@router.get("/list")
-async def list_sessions(user_id: str = "anonymous"):
-    """Lấy danh sách các phiên chat của người dùng."""
-    sessions = get_user_sessions(user_id)
-    # Gom nhóm theo thời gian (Today, Yesterday, etc.) cho Sidebar
-    return {"sessions": sessions}
 
 @router.get("/history")
 async def get_history(session_id: str = "default"):
-    """Lấy lịch sử chat theo session_id từ SQLite."""
-    messages = get_session_history(session_id, limit=MAX_HISTORY_TURNS * 2)
+    """Lấy lịch sử chat theo session_id (in-memory)."""
+    messages = list(SESSION_MESSAGES.get(session_id, deque()))
     return {
         "session_id": session_id,
         "messages": messages,
@@ -45,37 +40,24 @@ async def get_history(session_id: str = "default"):
 @router.post("/send")
 async def send_message(msg: ChatMessage):
     """
-    Chat flow có persistence:
-    1. Đảm bảo session tồn tại trong DB.
-    2. Lấy lịch sử hội thoại.
-    3. Gọi AI Engine.
-    4. Lưu vào SQLite.
+    Chat flow có memory theo session_id:
+    1. Lấy lịch sử hội thoại gần nhất.
+    2. Gọi AI Engine với query + history + provider settings.
+    3. Lưu user/assistant vào memory.
     """
-    # 1. Khởi tạo session nếu chưa có
-    create_session(msg.session_id, msg.user_id)
-    
-    # 2. Lưu tin nhắn của USER vào database NGAY LẬP TỨC
-    save_message(msg.session_id, "user", msg.message)
-    
-    # 3. Lấy lịch sử từ database (bao gồm cả tin nhắn vừa lưu)
-    history_payload = get_session_history(msg.session_id, limit=MAX_HISTORY_TURNS * 2)
-
-    # 4. Tự động cập nhật tiêu đề nếu là tin nhắn đầu tiên
-    if len(history_payload) <= 1 and len(msg.message) > 5:
-        title = msg.message[:30] + "..." if len(msg.message) > 30 else msg.message
-        update_session_title(msg.session_id, title)
+    session_history = SESSION_MESSAGES[msg.session_id]
+    history_payload = list(session_history)
 
     try:
-        async with httpx.AsyncClient(timeout=180.0) as client:
+        async with httpx.AsyncClient(timeout=150.0) as client:
             response = await client.post(
                 f"{AI_ENGINE_URL}/internal/inference",
                 json={
                     "query": msg.message,
                     "session_id": msg.session_id,
-                    "history": history_payload[:-1], # Gửi lịch sử trước đó, không gửi chính nó
+                    "history": history_payload,
                     "provider": msg.provider,
                     "google_api_key": msg.api_key,
-                    "google_model": msg.google_model,
                     "retrieve_only": msg.retrieve_only,
                 },
             )
@@ -83,75 +65,17 @@ async def send_message(msg: ChatMessage):
             ai_response = response.json()
     except Exception as exc:
         ai_response = {
-            "answer": f"[Error] Hệ thống đang bận hoặc quá tải. Vui lòng thử lại sau giây lát. (Chi tiết: {exc})",
+            "answer": f"[Error] AI Engine communication failed: {exc}",
             "sources": [],
         }
 
-    assistant_reply = ai_response.get("answer", "Hệ thống không phản hồi.")
+    assistant_reply = ai_response.get("answer", "No response")
 
-    # 5. Lưu câu trả lời của AI vào database kèm trích dẫn
-    import json
-    sources_json = json.dumps(ai_response.get("sources", []))
-    save_message(msg.session_id, "assistant", assistant_reply, metadata=sources_json)
+    session_history.append({"role": "user", "content": msg.message})
+    session_history.append({"role": "assistant", "content": assistant_reply})
 
     return {
         "reply": assistant_reply,
         "session_id": msg.session_id,
         "citations": ai_response.get("sources", []),
-        "timings": ai_response.get("timings", {})
     }
-
-@router.post("/send_stream")
-async def send_message_stream(msg: ChatMessage):
-    """
-    Endpoint hỗ trợ Streaming cho Frontend.
-    """
-    create_session(msg.session_id, msg.user_id)
-    save_message(msg.session_id, "user", msg.message)
-    history_payload = get_session_history(msg.session_id, limit=MAX_HISTORY_TURNS * 2)
-
-    async def stream_generator():
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            async with client.stream(
-                "POST",
-                f"{AI_ENGINE_URL}/internal/inference_stream",
-                json={
-                    "query": msg.message,
-                    "session_id": msg.session_id,
-                    "history": history_payload[:-1],
-                    "provider": msg.provider,
-                    "google_api_key": msg.api_key,
-                    "google_model": msg.google_model,
-                }
-            ) as response:
-                # Gửi dữ liệu mồi (Padding) để phá vỡ bộ đệm của Proxy/Cloudflare (ép xả dữ liệu ngay)
-                padding = ":" + " " * 1024 + "\n" 
-                yield padding
-                
-                # Gửi ngay dòng đầu tiên để kích hoạt UI
-                first_chunk = "### 🛡️ Nexus Legal AI - Tiến trình xử lý:\n"
-                yield first_chunk
-                print(f"DEBUG: Khởi động stream với chunk đầu tiên: {first_chunk}", flush=True)
-                
-                full_reply = ""
-                # Sử dụng aiter_text() để httpx tự động xử lý decoding UTF-8 chuẩn xác (đặc biệt quan trọng cho tiếng Việt)
-                async for chunk in response.aiter_text():
-                    full_reply += chunk
-                    yield chunk
-                
-                # Lưu vào DB sau khi kết thúc stream
-                if full_reply:
-                    save_message(msg.session_id, "assistant", full_reply)
-
-    return StreamingResponse(
-        stream_generator(), 
-        media_type="application/octet-stream", # Chuyển sang octet-stream để Proxy không nén Gzip
-        headers={
-            "X-Accel-Buffering": "no",
-            "Cache-Control": "no-cache, no-transform", # no-transform cấm Proxy thay đổi/nén dữ liệu
-            "Connection": "keep-alive",
-            "Content-Encoding": "identity",
-            "X-Content-Type-Options": "nosniff",
-            "Transfer-Encoding": "chunked",
-        }
-    )
