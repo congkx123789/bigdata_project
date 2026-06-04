@@ -1,104 +1,104 @@
-# ⚖️ Nexus Legal AI - High Performance RAG System
+# 🚀 Hệ thống Xử lý Tài liệu Thông minh (Bigdata AI RAG System)
 
-[![Next.js](https://img.shields.io/badge/Frontend-Next.js%2015-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
-[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
-[![Milvus](https://img.shields.io/badge/VectorDB-Milvus-00d1e0?style=for-the-badge&logo=milvus)](https://milvus.io/)
-[![NVIDIA Blackwell](https://img.shields.io/badge/GPU-NVIDIA%20Blackwell%20Optimized-76b900?style=for-the-badge&logo=nvidia)](https://www.nvidia.com/)
-
-Hệ thống RAG (Retrieval-Augmented Generation) tra cứu pháp luật Việt Nam hiệu năng cao, được thiết kế chuyên biệt cho các dòng GPU thế hệ mới **NVIDIA Blackwell (RTX 5000 Series)** và tối ưu hóa trải nghiệm người dùng đa thiết bị.
+Chào mừng bạn đến với hệ thống RAG (Retrieval-Augmented Generation) tiên tiến, được thiết kế để xử lý và truy vấn bộ dữ liệu văn bản khổng lồ. Hệ thống này kết hợp sức mạnh của công nghệ Vector Search hiệu năng cao và các mô hình ngôn ngữ lớn (LLM) hiện đại nhất.
 
 ---
 
-## ✨ Tính năng nổi bật
+## 🏛️ Kiến trúc Hệ thống
 
-### 📱 Giao diện Mobile-First Siêu ổn định
-- **Viewport Perfection**: Sử dụng đơn vị `100dvh` và kỹ thuật **Absolute Sandwich Layout** giúp giao diện bám sát khung nhìn di động, không bị nhảy khung khi ẩn/hiện thanh địa chỉ trình duyệt.
-- **Dynamic Viewport Height (VH Fix)**: Tự động tính toán chiều cao thực tế trên các trình duyệt iOS/Android để đảm bảo thanh nhập liệu luôn nằm đúng vị trí.
-- **Premium UI/UX**: Thiết kế theo phong cách Glassmorphism, hỗ trợ Dark Mode và các hiệu ứng chuyển cảnh mượt mà với `Framer Motion`.
-
-### 🧠 Core RAG Engine (178,000+ Documents)
-- **Hierarchical Tree Chunking**: Tự động bóc tách văn bản pháp luật theo cấu trúc cây (Luật > Chương > Điều > Khoản), giúp truy xuất ngữ cảnh chính xác tuyệt đối.
-- **Agentic Reasoning**: Sử dụng Agent Logic để phân tích câu hỏi phức tạp trước khi thực hiện tìm kiếm vector.
-- **BGE-M3 Embedding**: Tối ưu hóa cho tiếng Việt với khả năng xử lý đa ngôn ngữ và tìm kiếm hybrid.
-
-### ⚡ Tối ưu hóa Phần cứng (Blackwell SM 120)
-- **BF16 Native Inference**: Tận dụng tối đa sức mạnh của Tensor Cores thế hệ mới.
-- **FlashAttention-2**: Giảm 40% tiêu thụ VRAM và tăng 2x tốc độ xử lý context dài.
-- **Persistent VRAM Management**: Cơ chế chống phân mảnh bộ nhớ cho phép hệ thống chạy liên tục 24/7 không cần khởi động lại.
-
----
-
-## 🏗 Kiến trúc hệ thống
+Hệ thống được xây dựng trên kiến trúc microservices hướng sự kiện, đảm bảo khả năng mở rộng cao (Scalability) và tính sẵn sàng cao (High Availability).
 
 ```mermaid
 graph TD
-    subgraph "1. NẠP LIỆU (INGESTION)"
-        A[content.parquet] -->|Read Pandas| B[ingest_to_milvus.py]
-        B -->|Producer Threads| C[LegalParser.py]
-        C -->|Clean & Tree Chunking| D[Hierarchical Text Chunks]
-        D -->|Consumer GPU| E[BGE-M3 Embedding]
-        E -->|BF16 + FlashAttention| F[Milvus: vi_legal_rag]
+    User([Người dùng]) --> Frontend[Next.js 16 Web UI]
+    Frontend --> CoreAPI[Core API Gateway]
+    
+    subgraph "AI & Retrieval Layer"
+        CoreAPI --> RAGEngine[AI RAG Engine - FastAPI]
+        RAGEngine --> Milvus[(Milvus Vector DB)]
+        RAGEngine --> Gemini{Gemini 2.0 / Ollama}
+        RAGEngine --> BGE[BGE-M3 Embeddings]
     end
-
-    subgraph "2. TRUY VẤN (INFERENCE)"
-        User((Người dùng)) -->|Hỏi| G[Frontend: Next.js]
-        G -->|API Call| H[Core API: routers/chats.py]
-        H -->|RAG Request| I[AI Engine: main.py]
-        I -->|Agent Logic| J[agentic_rag/agent.py]
-        J -->|Search| F
-        F -->|Top K Context| J
-        J -->|Prompt + Context| K[Gemini 3 Flash]
-        K -->|Trả lời| G
+    
+    subgraph "Data Ingestion Pipeline"
+        MinIO[(MinIO Object Store)] --> Spark[Spark Processor]
+        Spark --> Kafka{Kafka Stream}
+        Kafka --> Ingestor[Data Ingestor]
+        Ingestor --> Milvus
     end
-
-    style F fill:#f96,stroke:#333,stroke-width:2px
-    style E fill:#bfb,stroke:#333
-    style K fill:#bbf,stroke:#333
+    
+    subgraph "Infrastructure"
+        Postgres[(PostgreSQL Metadata)]
+        Redis[(Redis Cache)]
+        Keycloak[Keycloak IAM]
+    end
 ```
 
 ---
 
-## 🛠 Hướng dẫn vận hành
+## 🛠️ Công nghệ cốt lõi
 
-### 1. Khởi chạy nhanh với Docker
+| Thành phần | Công nghệ sử dụng |
+| :--- | :--- |
+| **Frontend** | Next.js 16 (React 19), Tailwind CSS 4, Framer Motion, Shadcn UI |
+| **Backend API** | FastAPI, Python 3.12 |
+| **LLM Provider** | Google Gemini 2.0 Flash, Ollama (Llama 3.2:1b) |
+| **Embedding** | BAAI/BGE-M3 (Multi-lingual) |
+| **Vector DB** | Milvus Standalone (v2.3+) |
+| **Message Broker** | Apache Kafka |
+| **Lưu trữ** | MinIO (S3 compatible), PostgreSQL 15, Redis 7 |
+| **Giám sát** | Prometheus, Grafana, ELK Stack (Elasticsearch, Logstash, Kibana) |
+
+---
+
+## 🌍 Hướng dẫn Triển khai & Di động (Portability)
+
+Dự án hỗ trợ chuyển đổi máy chủ (migration) cực kỳ nhanh chóng thông qua việc tách biệt **Dữ liệu cấu trúc (Brain)** và **Dữ liệu thô (Raw Data)**.
+
+### 1. Đồng bộ lên Hugging Face (Từ máy gốc)
+Nếu bạn có thay đổi về index hoặc database, hãy chạy:
 ```bash
-# Khởi động toàn bộ hạ tầng (Milvus, API, Engine, Frontend)
-docker compose up -d --build
+export HF_TOKEN="your_token_here"
+python3 sync_to_hf.py
 ```
+Dữ liệu sẽ được bảo mật dưới dạng snapshot và đẩy lên [Hugging Face Assets](https://huggingface.co/datasets/Cong123779/bigdata-assets).
 
-### 2. Nạp dữ liệu vào Vector Database
-Hệ thống hỗ trợ nạp song song 178k văn bản pháp luật:
+### 2. Thiết lập trên máy mới (One-Touch Setup)
+
+Quy trình thiết lập tiêu chuẩn trên một thiết bị mới:
+
+**Bước A: Tải mã nguồn**
 ```bash
-docker exec -it bd_legal_ai_engine python3 /app/services/ai-rag-engine/vector_store/ingest_to_milvus.py
+git clone https://github.com/congkx123789/bigdata_project.git
+cd bigdata_project
 ```
 
-### 3. Theo dõi hiệu năng
+**Bước B: Chạy Setup thông minh**
+Thay vì cấu hình thủ công, hãy chạy script duy nhất:
 ```bash
-# Xem log nạp liệu và mức độ sử dụng GPU
-docker exec bd_legal_ai_engine tail -f /app/ingestion_progress.log
+export HF_TOKEN="your_token_here"
+chmod +x setup.sh
+./setup.sh
 ```
 
----
-
-## 📂 Cấu trúc dự án
-
-```text
-Bigdata/
-├── services/
-│   ├── ai-rag-engine/             # 🧠 Xử lý AI, Inference & Embedding (GPU Task)
-│   ├── core-api/                  # 🌐 Backend chính quản lý phiên chat & người dùng
-│   └── frontend/                  # 💻 Giao diện Next.js (Mobile-Optimized)
-├── agentic_rag/                   # 🤖 Logic suy luận đa bước
-├── datasets/                      # 📖 Kho dữ liệu pháp luật 178k docs
-└── docker-compose.yml             # 🐳 Quản lý hạ tầng Container
-```
+**Bước C: Lựa chọn khôi phục (Interactive)**
+Trong quá trình chạy `./setup.sh`, hệ thống sẽ đưa ra 2 lựa chọn quan trọng:
+1.  **Restore Data from HF? (y/n)**: Chọn `y` để tải toàn bộ "bộ não" (Milvus, Postgres) từ Hugging Face. Điều này giúp bạn có thể Chat ngay lập tức mà không cần xử lý lại dữ liệu.
+2.  **Download Raw Datasets? (y/n)**: Chọn `y` nếu bạn muốn tải 48GB dữ liệu thô (RVL-CDIP) về máy để tiếp tục nghiên cứu hoặc huấn luyện.
 
 ---
 
-## 🔐 Bảo mật & Riêng tư
-- Toàn bộ dữ liệu hội thoại được lưu trữ cục bộ.
-- Hỗ trợ mã hóa đầu cuối khi tích hợp với các API bên ngoài.
-- Cơ chế Anonymous User cho phép trải nghiệm hệ thống không cần đăng ký.
+## 📂 Cấu trúc thư mục chính
+
+- `frontend/`: Giao diện người dùng Next.js hiện đại.
+- `infra/`: Cấu hình Docker Compose cho toàn bộ hạ tầng lõi.
+- `services/`: Các microservices (ai-rag-engine, core-api, ingestion).
+- `datasets/`: Thư mục chứa dữ liệu thô (Git-ignored).
+- `monitoring/`: Cấu hình Dashboard Grafana và Prometheus.
+- `sync_to_hf.py` / `restore_from_hf.py`: Bộ công cụ đồng bộ hóa đám mây.
+- `download_datasets.sh`: Công cụ tải dữ liệu thô tự động.
 
 ---
-**Optimized for NVIDIA Blackwell Architecture.**
+
+## 👨‍💻 Tác giả
+Phát triển và bảo trì bởi **congkx123789**. 🇻🇳
