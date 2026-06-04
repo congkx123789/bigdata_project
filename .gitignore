@@ -1,47 +1,49 @@
-# === DO NOT PUSH (Heavy Data) ===
+# Datasets and huge files
 datasets/
-venv/
-node_modules/
-.next/
-model_weights/
-qwen*/
-lora*/
-*.gguf
-*.bin
-*.parquet
-*.meta
-*.bkp
-.minio.sys/
-milvus_data/
-aiedu-milvus/
-rdb_data/
-hf_snapshots/
-outputs/
-member/
-unsloth_compiled_cache/
-_unsloth_sentencepiece_temp/
-scratch/
-checkpoint*/
-
-# === Application State & Logs ===
-ingest_checkpoint.txt
-ingestion_checkpoint.txt
-*.log
-*.pid
-pid.txt
-*.json
-!frontend/package.json
-!frontend/package-lock.json
-
-# === Data & Backups ===
 data/
-infra/data/
 *.tar.gz
+*.incomplete
+*.zip
 
-# === Python & OS ===
+# Logs
+*.log
+*.log.*
+
+# Environments
+.env*
+!.env.example
+.venv
+venv/
 __pycache__/
-*.py[cod]
-.env
-.DS_Store
-.idea/
+*.pyc
+
+# Models and large weights
+model_weights/
+lora_legal_model/
+lora_legal_gguf/
+qwen2.5-1.5b-legal-finetuned/
+qwen2.5-1.5b-legal-finetuned-final/
+*.gguf
+ollama-bin
+outputs/
+unsloth_compiled_cache/
+
+# Test results and temporary JSONs
+*.json
+!package.json
+!composer.json
+!tsconfig.json
+!next-env.d.ts
+
+# IDEs and OS
+.cursor/
 .vscode/
+.DS_Store
+
+# Temporary files
+pid.txt
+*.pid
+node_modules/
+dist/
+build/
+.next/
