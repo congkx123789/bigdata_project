@@ -9,16 +9,38 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: password123
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-changeme_in_production}
     volumes:
-      - ./data/minio:/data
+      - minio_data:/data
     command: server /data --console-address ":9001"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 30s
       timeout: 20s
       retries: 3
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        until mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY:-admin} ${MINIO_SECRET_KEY:-changeme_in_production} >/dev/null 2>&1; do
+          sleep 2
+        done
+        mc mb --ignore-existing local/legal-bronze
+        mc mb --ignore-existing local/legal-silver
+        mc mb --ignore-existing local/legal-gold
+        mc mb --ignore-existing local/documents
+        mc mb --ignore-existing local/legal-checkpoints
+        echo "MinIO buckets ready (bronze, silver, gold, documents, checkpoints)."
+
 
   # Vector Database (Milvus Standalone)
   etcd:
@@ -29,7 +51,7 @@ services:
       - ETCD_QUOTA_BACKEND_BYTES=4294967296
       - ETCD_SNAPSHOT_COUNT=10000
     volumes:
-      - ./data/etcd:/etcd
+      - etcd_data:/etcd
     command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir /etcd
 
   milvus:
@@ -39,10 +61,10 @@ services:
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
-      MINIO_ACCESS_KEY_ID: admin
-      MINIO_SECRET_ACCESS_KEY: password123
+      MINIO_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-admin}
+      MINIO_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-changeme_in_production}
       MINIO_USE_SSL: "false"
-      MINIO_BUCKET_NAME: aiedu-milvus
+      MINIO_BUCKET_NAME: milvus-data
     ports:
       - "19530:19530"
       - "9091:9091"
@@ -50,20 +72,20 @@ services:
       - etcd
       - minio
     volumes:
-      - ./data/milvus:/var/lib/milvus
+      - milvus_data:/var/lib/milvus
 
   # Main Database (PostgreSQL)
   postgres:
     image: postgres:15
     container_name: postgres
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password123
-      POSTGRES_DB: document_db
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
+      POSTGRES_DB: ${POSTGRES_DB:-document_db}
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
 
   # Cache (Redis)
   redis:
@@ -72,7 +94,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - ./data/redis:/data
+      - redis_data:/data
 
   # Message Broker (Kafka)
   zookeeper:
@@ -97,17 +119,36 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-init
+    depends_on:
+      - kafka
+    restart: "no"
+    entrypoint:
+      - /bin/bash
+      - -ec
+      - |
+        until /usr/bin/kafka-topics --bootstrap-server kafka:29092 --list >/dev/null 2>&1; do
+          sleep 2
+        done
+        /usr/bin/kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic document-extracted-text --partitions 3 --replication-factor 1
+        /usr/bin/kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic document-dlq --partitions 1 --replication-factor 1
+        /usr/bin/kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic legal-doc-processed --partitions 3 --replication-factor 1
+        echo "Kafka topics ready (document-extracted-text, document-dlq, legal-doc-processed)."
+
+
   # Identity and Access Management (Keycloak)
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
     container_name: keycloak
     environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: password123
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-changeme_in_production}
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/document_db
-      KC_DB_USERNAME: admin
-      KC_DB_PASSWORD: password123
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-document_db}
+      KC_DB_USERNAME: ${POSTGRES_USER:-admin}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
       KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_HTTPS: "false"
       KC_HTTP_ENABLED: "true"
@@ -119,5 +160,183 @@ services:
       - postgres
     command: start-dev
 
+  # Local LLM Server (Ollama)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
-# Volumes are now managed via bind mounts in ./data directory to save space on Drive C
+  # --- Big Data Ecosystem Added ---
+  spark-master:
+    image: spark:3.5.0
+    container_name: spark-master
+    user: root
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --host spark-master --port 7077 --webui-port 8080
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    volumes:
+      - ../:/workspace
+
+  spark-worker:
+    image: spark:3.5.0
+    container_name: spark-worker
+    user: root
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077 --webui-port 8081 -c 2 -m 4G
+    depends_on:
+      - spark-master
+    ports:
+      - "8082:8081"
+    volumes:
+      - ../:/workspace
+
+  spark-worker-2:
+    image: spark:3.5.0
+    container_name: spark-worker-2
+    user: root
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077 --webui-port 8081 -c 2 -m 4G
+    depends_on:
+      - spark-master
+    ports:
+      - "8083:8081"
+    volumes:
+      - ../:/workspace
+
+  trino:
+    image: trinodb/trino:453
+    container_name: trino
+    ports:
+      - "8088:8080"
+    volumes:
+      - ./trino/etc:/etc/trino
+      - ./trino/catalog:/etc/trino/catalog
+    environment:
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-admin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-changeme_in_production}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-document_db}
+      - POSTGRES_USER=${POSTGRES_USER:-admin}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme_in_production}
+      - ICEBERG_WAREHOUSE=${ICEBERG_WAREHOUSE:-s3a://documents/warehouse}
+    depends_on:
+      - postgres
+      - minio
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  superset-init:
+    image: apache/superset:latest
+    container_name: superset-init
+    depends_on:
+      - postgres
+      - trino
+    restart: "no"
+    environment:
+      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-changeme_superset_key_in_production}
+    volumes:
+      - superset_data:/app/superset_home
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        pip install --no-cache-dir trino sqlalchemy-trino psycopg2-binary
+        superset db upgrade
+        superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true
+        superset init
+        echo "Superset bootstrap complete."
+
+  superset:
+    image: apache/superset:latest
+    container_name: superset
+    ports:
+      - "8089:8088"
+    environment:
+      - SUPERSET_SECRET_KEY=yoursecretkeyhere1234
+    depends_on:
+      - postgres
+      - superset-init
+    volumes:
+      - superset_data:/app/superset_home
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        pip install --no-cache-dir trino sqlalchemy-trino psycopg2-binary
+        gunicorn --bind 0.0.0.0:8088 --worker-class gthread --threads 20 --timeout 60 --limit-request-line 0 --limit-request-field_size 0 "superset.app:create_app()"
+
+  airflow-init:
+    image: apache/airflow:2.8.1
+    container_name: airflow-init
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres/${POSTGRES_DB:-document_db}
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres/${POSTGRES_DB:-document_db}
+    depends_on:
+      - postgres
+    restart: "no"
+    command: >
+      bash -c "airflow db init && airflow users create --username admin --firstname admin --lastname admin --role Admin --email admin@example.org --password ${AIRFLOW_ADMIN_PASSWORD:-admin} || true"
+
+  airflow-webserver:
+    image: apache/airflow:2.8.1
+    container_name: airflow-webserver
+    ports:
+      - "8090:8080"
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres/${POSTGRES_DB:-document_db}
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres/${POSTGRES_DB:-document_db}
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    volumes:
+      - ../dags:/opt/airflow/dags
+    depends_on:
+      - postgres
+      - airflow-init
+    command: bash -c "pip install apache-airflow-providers-apache-spark && airflow webserver"
+
+  airflow-scheduler:
+    image: apache/airflow:2.8.1
+    container_name: airflow-scheduler
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres/${POSTGRES_DB:-document_db}
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres/${POSTGRES_DB:-document_db}
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - PROJECT_ROOT=/opt/airflow
+      - MANIFEST_ROOT=/opt/airflow/data/manifests
+      - HF_DATASET_REPO=${HF_DATASET_REPO:-th1nhng0/vietnamese-legal-documents}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-admin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-changeme_in_production}
+      - SPARK_MASTER=${SPARK_MASTER:-spark://spark-master:7077}
+    volumes:
+      - ../dags:/opt/airflow/dags
+    depends_on:
+      - postgres
+      - airflow-init
+    command: bash -c "pip install apache-airflow-providers-apache-spark && airflow scheduler"
+
+volumes:
+  minio_data:
+  etcd_data:
+  milvus_data:
+  postgres_data:
+  redis_data:
+  ollama_data:
+  superset_data:
