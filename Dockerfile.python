@@ -21,16 +21,8 @@ RUN pip3 install --no-cache-dir \
     torch \
     openai \
     httpx \
-    requests \
     python-multipart \
-    pydantic \
-    pyarrow \
-    google-generativeai \
-    beautifulsoup4 \
-    pandas \
-    FlagEmbedding \
-    einops \
-    accelerate
+    pydantic
 
 # Thiết lập biến môi trường
 ENV PYTHONPATH=/app
